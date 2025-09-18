@@ -135,3 +135,18 @@ def update_daily_card(user_id, card_text):
         cur.execute("UPDATE users SET daily_card = %s, last_card_date = CURRENT_DATE WHERE user_id = %s", (card_text, user_id))
         conn.commit()
     conn.close()
+
+def increment_referral_count(user_id):
+    """Увеличивает счётчик приглашённых пользователем (referral_count) на 1."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE users SET referral_count = referral_count + 1 WHERE user_id = ?', (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_referral_link(user_id):
+    """Генерирует реферальную ссылку для приглашения друзей.
+    Замени 'YourTarotBot' на реальное имя твоего бота в Telegram!"""
+    BOT_USERNAME = "speculora_bot"  # 🔴 ОБЯЗАТЕЛЬНО ЗАМЕНИ НА РЕАЛЬНОЕ ИМЯ ТВОЕГО БОТА!
+    return f"https://t.me/{BOT_USERNAME}?start=ref_{user_id}"

@@ -137,9 +137,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user = get_user(user_id)  # Автоматически создаётся, если нет
 
+    # Проверяем, есть ли ref-аргумент
+    referrer_id = None
+    if context.args and context.args[0].startswith('ref_'):
+        try:
+            referrer_id = int(context.args[0].replace('ref_', ''))
+            # Проверим, что это не сам себя приглашает
+            if referrer_id == user_id:
+                referrer_id = None
+        except ValueError:
+            referrer_id = None
+
     user_name = user['name'] if user['name'] else ""
-    
+
     if user_name:
+        # Если пользователь уже есть, но пришёл по рефке — игнорируем (рефка только при первом старте)
         await update.message.reply_text(
             f"🌑 *Ты вернулся, {user_name}...*\n"
             "Зеркало Судеб вновь открыто для тебя. Выбери путь:",
@@ -148,6 +160,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return MAIN_MENU
     else:
+        # Запоминаем реферера, если есть
+        if referrer_id:
+            # Сохраним в user_data, чтобы использовать после ввода имени
+            context.user_data['referrer_id'] = referrer_id
+
         await update.message.reply_text(
             "🌙 *Добро пожаловать в Зеркало Судеб* 🌙\n\n"
             "Я — хранитель древних знаний, проводник между мирами.\n\n"
@@ -163,8 +180,32 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.message.text
     update_user_name(user_id, user_name)
     
+    # Проверим, есть ли реферер
+    referrer_id = context.user_data.get('referrer_id')
+    
+    bonus_message = ""
+    if referrer_id:
+        # Начислим рефереру +1 расклад
+        from db import update_user_balance, increment_referral_count
+        current_balance = get_user(referrer_id)['readings_balance']
+        update_user_balance(referrer_id, current_balance + 1)
+        increment_referral_count(referrer_id)  # Увеличим счётчик приглашённых
+        
+        # Отправим уведомление рефереру
+        try:
+            await context.bot.send_message(
+                chat_id=referrer_id,
+                text=f"✨ *Твой друг {user_name} присоединился по твоей ссылке!*\n"
+                     f"В награду ты получаешь +1 бесплатный расклад. Всего приглашено: {get_user(referrer_id)['referral_count']}",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось отправить уведомление рефереру {referrer_id}: {e}")
+        
+        bonus_message = "\n\nP.S. Ты был приглашён другом — спасибо, что присоединился к Кругу Зеркала!"
+
     await update.message.reply_text(
-        f"{user_name}... Какое прекрасное имя, полное энергии и тайны. 🌌\n\n"
+        f"{user_name}... Какое прекрасное имя, полное энергии и тайны. 🌌{bonus_message}\n\n"
         "В знак нашего знакомства я дарю тебе *дар ясновидения* — один бесплатный расклад, "
         "который ты можешь использовать в любой момент.\n\n"
         "Когда будешь готов заглянуть в Глубины, просто выбери один из путей в меню ниже.",
@@ -204,13 +245,24 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reading_type_keyboard()
         )
         return AWAITING_READING_TYPE
+    elif user_input == '🔗 Пригласить друга':  # <-- НОВЫЙ БЛОК
+        user_id = update.message.from_user.id
+        ref_link = get_referral_link(user_id)
+        await update.message.reply_text(
+            f"✨ *Поделись магией с подругой!* ✨\n\n"
+            f"Отправь ей эту ссылку:\n`{ref_link}`\n\n"
+            f"Когда она зарегистрируется — *ты получишь +1 бесплатный расклад!*\n"
+            f"А она — начнёт с бесплатного пророчества 🌙",
+            parse_mode='Markdown',
+            reply_markup=main_menu_keyboard()
+        )
+        return MAIN_MENU
     else:
         await update.message.reply_text(
             "🌑 Я не понял твой знак... Выбери путь из меню.",
             reply_markup=main_menu_keyboard()
         )
         return MAIN_MENU
-
 async def handle_reading_type_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
 
@@ -402,6 +454,7 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         ['📜 Мои последние расклады'],
         ['🛍️ Купить расклады'],
+        ['🔗 Пригласить друга'],
         ['⬅️ Назад в меню']
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
