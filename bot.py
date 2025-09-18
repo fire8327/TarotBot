@@ -60,7 +60,7 @@ def main_menu_keyboard():
     keyboard = [
         ['🔮 Сделать расклад'],
         ['⭐ Мой профиль', '🃏 Карта дня'],
-        ['📜 О боте']
+        ['📜 О боте', '🌀 Рестарт бота'],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -194,6 +194,8 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif user_input == '⬅️ Назад в меню':
         await update.message.reply_text("🌑 Возвращаю тебя в Зал Зеркал...", reply_markup=main_menu_keyboard())
         return MAIN_MENU    
+    elif user_input == '🌀 Рестарт бота': 
+        return await restart_bot(update, context) 
     elif user_input == '🔮 Сделать расклад':
         await update.message.reply_text(
             "🕯️ *Выбери путь, по которому ступишь в тумане предсказаний...*\n\n"
@@ -634,6 +636,20 @@ async def show_full_reading(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🌑 Не удалось показать расклад. Попробуй снова.",
             reply_markup=main_menu_keyboard()
         )
+
+async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сбрасывает состояние пользователя — как "мягкий перезапуск" """
+    user_id = update.message.from_user.id
+    # Очищаем временное хранилище
+    context.user_data.clear()
+    # Получаем свежие данные из БД
+    user = get_user(user_id)
+    await update.message.reply_text(
+        "🌀 Бот был сброшен. Твои данные сохранены, состояние диалога очищено.\n"
+        "Теперь можешь начать заново — выбери путь в меню.",
+        reply_markup=main_menu_keyboard()
+    )
+    return MAIN_MENU
 
 # --- Запуск ---
 def main():
