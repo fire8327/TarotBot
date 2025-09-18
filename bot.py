@@ -61,6 +61,7 @@ def main_menu_keyboard():
         ['🔮 Сделать расклад'],
         ['⭐ Мой профиль', '🃏 Карта дня'],
         ['📜 О боте', '🌀 Рестарт бота'],
+        ['🤝 Пригласить друга']
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -245,17 +246,26 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reading_type_keyboard()
         )
         return AWAITING_READING_TYPE
-    elif user_input == '🔗 Пригласить друга':  # <-- НОВЫЙ БЛОК
+    elif user_input == '🤝 Пригласить друга':
         user_id = update.message.from_user.id
-        ref_link = get_referral_link(user_id)
+        bot_username = "speculora_bot"  # 🔴 ЗАМЕНИ НА РЕАЛЬНОЕ ИМЯ ТВОЕГО БОТА!
+        ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+
+        # Отправляем первое сообщение — пояснение
         await update.message.reply_text(
-            f"✨ *Поделись магией с подругой/другом!* ✨\n\n"
-            f"Отправь ей/ему эту ссылку:\n`{ref_link}`\n\n"
-            f"Когда он/она зарегистрируется — *ты получишь +1 бесплатный расклад!*\n"
-            f"А он/она — начнёт с бесплатного пророчества 🌙",
+            "✨ *Твоя магическая ссылка готова!* ✨\n\n"
+            "Отправь её подруге/другу — когда он/она зарегистрируется, ты получишь +1 бесплатный расклад 🌙\n"
+            "А она начнёт с бесплатного пророчества!",
             parse_mode='Markdown',
             reply_markup=main_menu_keyboard()
         )
+
+        # Отправляем второе сообщение — ЧИСТАЯ КЛИКАБЕЛЬНАЯ ССЫЛКА
+        await update.message.reply_text(
+            f"{ref_link}",
+            reply_markup=main_menu_keyboard()
+        )
+
         return MAIN_MENU
     else:
         await update.message.reply_text(
@@ -263,6 +273,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_menu_keyboard()
         )
         return MAIN_MENU
+
 async def handle_reading_type_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
 
