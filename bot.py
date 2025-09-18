@@ -465,7 +465,7 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         ['📜 Мои последние расклады'],
         ['🛍️ Купить расклады'],
-        ['🔗 Пригласить друга'],
+        ['🤝 Пригласить друга'],
         ['⬅️ Назад в меню']
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -649,6 +649,40 @@ async def force_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return MAIN_MENU
 
+async def global_fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ловит любые сообщения от пользователей, не находящихся в активном состоянии ConversationHandler.
+    Автоматически возвращает в главное меню или на ввод имени."""
+    if update.message is None:
+        return
+
+    user_id = update.message.from_user.id
+    user = get_user(user_id)
+    user_name = user['name'] if user['name'] else ""
+
+    # Если пользователь ещё не вводил имя — отправляем на GET_NAME
+    if not user_name:
+        await update.message.reply_text(
+            "🌙 *Кажется, мы не закончили знакомство...*\n"
+            "Как мне звать тебя в Книге Судеб?",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardRemove()
+        )
+        # Устанавливаем состояние вручную
+        context.user_data.clear()
+        context.user_data['state'] = GET_NAME
+        return GET_NAME
+    else:
+        await update.message.reply_text(
+            f"🌙 *Добро пожаловать обратно, {user_name}.*\n"
+            "Зеркало Судеб снова открыто для тебя. Выбери путь:",
+            parse_mode='Markdown',
+            reply_markup=main_menu_keyboard()
+        )
+        # Устанавливаем состояние MAIN_MENU
+        context.user_data.clear()
+        context.user_data['state'] = MAIN_MENU
+        return MAIN_MENU
+
 async def button_buy_pack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -747,10 +781,10 @@ def main():
         },
         fallbacks=[
             CommandHandler('cancel', cancel),
-            MessageHandler(filters.TEXT & ~filters.COMMAND, force_main_menu)
         ],
     )
 
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, global_fallback_handler), group=1)
     application.add_handler(conv_handler)
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
