@@ -53,7 +53,7 @@ client = OpenAI(
 )
 
 # --- Импортируем БД ---
-from db import init_db, get_user, update_user_name, update_user_balance, increment_total_used, save_purchase, save_reading, update_daily_card
+from db import init_db, get_user, update_user_name, update_user_balance, increment_total_used, save_purchase, save_reading, update_daily_card, get_referral_link, increment_referral_count
 
 # --- Клавиатуры ---
 def main_menu_keyboard():
