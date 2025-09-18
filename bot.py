@@ -34,8 +34,8 @@ FREE_READINGS_ON_START = 1
 
 # Типы пакетов
 PACKAGES = {
-    "pack_1": {"name": "1 расклад", "price_stars": 10, "readings": 1},
-    "pack_5": {"name": "5 раскладов", "price_stars": 250, "readings": 5},
+    "pack_1": {"name": "1 расклад", "price_stars": 50, "readings": 1},
+    "pack_5": {"name": "5 раскладов", "price_stars": 200, "readings": 5},
     "pack_30": {"name": "Подписка на месяц (30 шт.)", "price_stars": 500, "readings": 30},
 }
 
@@ -449,8 +449,8 @@ async def show_reading_history(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def buy_readings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("🔮 1 расклад — 10 ⭐", callback_data="buy_pack_1")],
-        [InlineKeyboardButton("🔮 5 раскладов — 250 ⭐ (скидка!)", callback_data="buy_pack_5")],
+        [InlineKeyboardButton("🔮 1 расклад — 50 ⭐", callback_data="buy_pack_1")],
+        [InlineKeyboardButton("🔮 5 раскладов — 200 ⭐ (скидка!)", callback_data="buy_pack_5")],
         [InlineKeyboardButton("🔮 30 раскладов — 500 ⭐ (экономия!)", callback_data="buy_pack_30")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
