@@ -423,8 +423,8 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_reading_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user = get_user(user_id)
-    readings = user['last_readings']
-    
+    readings = user.get('last_readings', [])
+
     if not readings:
         await update.message.reply_text(
             "🔮 Ты ещё не делал раскладов. Начни — и история твоих пророчеств начнётся!",
@@ -432,19 +432,39 @@ async def show_reading_history(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         return MAIN_MENU
 
-    history_text = "📜 *Твои последние пророчества:*\n\n"
-    for i, entry in enumerate(reversed(readings), 1):
-        history_text += f"{i}. *{entry['type']}* ({entry['date']})\n"
-        short_text = '\n'.join(entry['text'].split('\n')[:2]) + "..."
-        history_text += f"{short_text}\n\n"
+    # Сортируем в обратном порядке (самые новые сверху)
+    sorted_readings = sorted(readings, key=lambda x: x['date'], reverse=True)
 
-    history_text += "🔮 Хочешь перечитать полный расклад — просто сделай новый на ту же тему."
+    history_text = "📜 *Твои последние пророчества:*\n\n"
+    keyboard = []
+
+    for i, entry in enumerate(sorted_readings[:5], 1):
+        # Форматируем дату
+        date_str = entry['date'][:16] if isinstance(entry['date'], str) and len(entry['date']) > 16 else entry['date']
+        history_text += f"{i}. *{entry['type']}* ({date_str})\n"
+        
+        # Показываем первые 2 строки
+        lines = entry['text'].split('\n')
+        preview = '\n'.join(lines[:2])
+        if len(lines) > 2:
+            preview += "..."
+        history_text += f"{preview}\n\n"
+
+        # Добавляем кнопку для этого расклада
+        callback_data = f"full_reading_{i-1}"  # индекс в списке sorted_readings
+        keyboard.append([InlineKeyboardButton(f"📖 Показать полностью #{i}", callback_data=callback_data)])
+
+    history_text += "🔮 Нажми на кнопку, чтобы перечитать расклад полностью."
+
+    reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
 
     await update.message.reply_text(
         history_text,
         parse_mode='Markdown',
-        reply_markup=main_menu_keyboard()
+        reply_markup=reply_markup
     )
+    # Сохраняем список раскладов в context.user_data для использования в callback
+    context.user_data['full_readings'] = sorted_readings[:5]
     return MAIN_MENU
 
 async def buy_readings(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -582,6 +602,39 @@ async def button_buy_pack(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Ошибка отправки инвойса: {e}")
         await query.edit_message_text("🌑 Не удалось создать инвойс. Попробуй позже.")
 
+async def show_full_reading(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает полный текст выбранного расклада"""
+    query = update.callback_query
+    await query.answer()
+
+    # Получаем индекс расклада
+    try:
+        index = int(query.data.split('_')[-1])
+        readings = context.user_data.get('full_readings', [])
+        
+        if index < 0 or index >= len(readings):
+            raise ValueError("Неверный индекс")
+
+        reading = readings[index]
+        full_text = reading['text']
+
+        # Отправляем полный текст
+        await query.message.reply_text(
+            f"✨ *✨✨✨ ПОЛНЫЙ РАСКЛАД ✨✨✨*\n"
+            f"🔮 *Тема:* {reading['type']}\n"
+            f"📅 *Дата:* {reading['date'][:16]}\n\n"
+            f"{full_text}",
+            parse_mode='Markdown',
+            reply_markup=main_menu_keyboard()
+        )
+
+    except Exception as e:
+        logger.error(f"Ошибка при показе полного расклада: {e}")
+        await query.message.reply_text(
+            "🌑 Не удалось показать расклад. Попробуй снова.",
+            reply_markup=main_menu_keyboard()
+        )
+
 # --- Запуск ---
 def main():
     # Инициализируем БД
@@ -606,7 +659,7 @@ def main():
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     application.add_handler(MessageHandler(filters.Regex('^🛍️ Купить расклады$'), buy_readings))
     application.add_handler(CallbackQueryHandler(button_buy_pack, pattern="^buy_pack_"))
-    
+    application.add_handler(CallbackQueryHandler(show_full_reading, pattern="^full_reading_"))
     application.run_polling()
 
 if __name__ == '__main__':
