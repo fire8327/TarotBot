@@ -636,18 +636,31 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def force_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Возвращает пользователя в главное меню, если бот 'забыл' его состояние."""
+    """Возвращает пользователя в главное меню или на ввод имени, если бот 'забыл' состояние."""
+    if update.message is None:
+        return ConversationHandler.END
+
     user_id = update.message.from_user.id
     user = get_user(user_id)
-    user_name = user['name'] if user['name'] else "Искатель"
+    user_name = user['name'] if user['name'] else ""
 
-    await update.message.reply_text(
-        f"🌙 *Добро пожаловать обратно, {user_name}.*\n"
-        "Зеркало Судеб снова открыто для тебя. Выбери путь:",
-        parse_mode='Markdown',
-        reply_markup=main_menu_keyboard()
-    )
-    return MAIN_MENU
+    # Если пользователь ещё не вводил имя — отправляем на GET_NAME
+    if not user_name:
+        await update.message.reply_text(
+            "🌙 *Кажется, мы не закончили знакомство...*\n"
+            "Как мне звать тебя в Книге Судеб?",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return GET_NAME
+    else:
+        await update.message.reply_text(
+            f"🌙 *Добро пожаловать обратно, {user_name}.*\n"
+            "Зеркало Судеб снова открыто для тебя. Выбери путь:",
+            parse_mode='Markdown',
+            reply_markup=main_menu_keyboard()
+        )
+        return MAIN_MENU
 
 async def global_fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Ловит любые сообщения от пользователей, не находящихся в активном состоянии ConversationHandler.
@@ -781,10 +794,10 @@ def main():
         },
         fallbacks=[
             CommandHandler('cancel', cancel),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, force_main_menu)  # <-- ЕДИНСТВЕННЫЙ fallback
         ],
     )
 
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, global_fallback_handler), group=1)
     application.add_handler(conv_handler)
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
