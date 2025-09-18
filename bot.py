@@ -635,6 +635,20 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
+async def force_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Возвращает пользователя в главное меню, если бот 'забыл' его состояние."""
+    user_id = update.message.from_user.id
+    user = get_user(user_id)
+    user_name = user['name'] if user['name'] else "Искатель"
+
+    await update.message.reply_text(
+        f"🌙 *Добро пожаловать обратно, {user_name}.*\n"
+        "Зеркало Судеб снова открыто для тебя. Выбери путь:",
+        parse_mode='Markdown',
+        reply_markup=main_menu_keyboard()
+    )
+    return MAIN_MENU
+
 async def button_buy_pack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -731,7 +745,10 @@ def main():
             AWAITING_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_question)],
             AWAITING_READING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_reading_type_selection)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
+        fallbacks=[
+            CommandHandler('cancel', cancel),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, force_main_menu)
+        ],
     )
 
     application.add_handler(conv_handler)
