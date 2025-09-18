@@ -181,30 +181,55 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.message.text
     update_user_name(user_id, user_name)
     
-    # Проверим, есть ли реферер
     referrer_id = context.user_data.get('referrer_id')
-    
     bonus_message = ""
-    if referrer_id:
-        # Начислим рефереру +1 расклад
-        from db import update_user_balance, increment_referral_count
-        current_balance = get_user(referrer_id)['readings_balance']
-        update_user_balance(referrer_id, current_balance + 1)
-        increment_referral_count(referrer_id)  # Увеличим счётчик приглашённых
-        
-        # Отправим уведомление рефереру
-        try:
-            await context.bot.send_message(
-                chat_id=referrer_id,
-                text=f"✨ *Твой друг {user_name} присоединился по твоей ссылке!*\n"
-                     f"В награду ты получаешь +1 бесплатный расклад. Всего приглашено: {get_user(referrer_id)['referral_count']}",
-                parse_mode='Markdown'
-            )
-        except Exception as e:
-            logger.warning(f"Не удалось отправить уведомление рефереру {referrer_id}: {e}")
-        
-        bonus_message = "\n\nP.S. Ты был приглашён другом — спасибо, что присоединился к Кругу Зеркала!"
 
+    # 🔥 ВАЖНО: Сначала даем стартовый бонус НОВОМУ пользователю
+    current_balance = get_user(user_id)['readings_balance']
+    update_user_balance(user_id, current_balance + 1)
+
+    if referrer_id:
+        try:
+            # Проверяем, существует ли реферер
+            referrer = get_user(referrer_id)
+            if not referrer or not referrer.get('name'):
+                # Если реферера нет — игнорируем
+                referrer_id = None
+            else:
+                # Начисляем +1 расклад рефереру
+                ref_balance = referrer['readings_balance']
+                update_user_balance(referrer_id, ref_balance + 1)
+                increment_referral_count(referrer_id)
+
+                # Сохраняем в purchases
+                save_purchase(
+                    user_id=referrer_id,
+                    payload="referral_bonus",
+                    readings=1,
+                    price_stars=0,
+                    actual_amount=0,
+                    charge_id=f"ref_{user_id}"
+                )
+
+                # Отправляем уведомление рефереру
+                try:
+                    await context.bot.send_message(
+                        chat_id=referrer_id,
+                        text=f"✨ *Твой друг {user_name} присоединился по твоей ссылке!*\n"
+                             f"В награду ты получаешь +1 бесплатный расклад. Всего приглашено: {referrer.get('referral_count', 0)}",
+                        parse_mode='Markdown'
+                    )
+                except Exception as e:
+                    logger.warning(f"Не удалось отправить сообщение рефереру {referrer_id}: {e}")
+
+                bonus_message = "\n\nP.S. Ты был приглашён другом — спасибо, что присоединился к Кругу Зеркала!"
+
+        except Exception as e:
+            logger.error(f"Ошибка при обработке реферера {referrer_id} для пользователя {user_id}: {e}")
+            # Не прерываем основной поток — просто игнорируем реферера
+            bonus_message = ""
+
+    # 🔥 ОТПРАВЛЯЕМ ПРИВЕТСТВИЕ ВСЕГДА — даже если реферер не сработал
     await update.message.reply_text(
         f"{user_name}... Какое прекрасное имя, полное энергии и тайны. 🌌{bonus_message}\n\n"
         "В знак нашего знакомства я дарю тебе *дар ясновидения* — один бесплатный расклад, "
