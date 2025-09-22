@@ -130,7 +130,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args  # Получаем аргументы после /start
     if args and args[0] == 'update':
         await update.message.reply_text("🌀 Начинаем обновление зеркала...")
-        await update.message.reply_text("🌀 Зеркало обновлено!")
+        await update.message.reply_text(
+            "✅ Зеркало успешно обновлено!",
+            reply_markup=main_menu_keyboard()
+        )
     else:    
 
         user_id = update.effective_user.id
