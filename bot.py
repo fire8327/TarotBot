@@ -34,7 +34,7 @@ TOKEN = os.getenv("TOKEN")
 ADMIN_USER_IDS = {780161853}
 
 # --- 🔑 КОНСТАНТЫ ДЛЯ БЫСТРОЙ НАСТРОЙКИ ---
-BOT_VERSION = "v1.12"  # <-- МЕНЯЙ ЭТУ ВЕРСИЮ ПРИ КАЖДОМ ДЕПЛОЕ
+BOT_VERSION = "v1.13"  # <-- МЕНЯЙ ЭТУ ВЕРСИЮ ПРИ КАЖДОМ ДЕПЛОЕ
 ACTIVE_USERS_DAYS = 7  # Рассылка обновления пользователям, активным за последние N дней
 STAR_PRICE_PER_READING = 50  # Цена одного расклада в ⭐
 REFERRAL_BONUS_READINGS = 1  # Сколько раскладов даём за приглашение
@@ -752,10 +752,6 @@ async def show_full_reading(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("🌑 Не удалось показать расклад. Попробуй снова.", reply_markup=main_menu_keyboard())
 
 # --- 🚨 ОБРАБОТЧИКИ ОБНОВЛЕНИЯ И ФОЛБЭКИ ---
-async def force_update_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Вызывает /start при нажатии кнопки обновления."""
-    return await start(update, context)
-
 async def global_fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None:
         return
@@ -814,13 +810,13 @@ async def handle_update_broadcast(update: Update, context: ContextTypes.DEFAULT_
         try:
             await context.bot.send_message(
                 chat_id=user['user_id'],
-                text=f"✨ *Зеркало Судеб обновился до версии {bot_version}!* 🌙\n"
-                     "Чтобы активировать все улучшения — нажми кнопку ниже.\n"
-                     "Твои данные, баланс и история — в полной сохранности.",
-                parse_mode='Markdown',
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🌀 Обновить Зеркало", callback_data="force_update")]
-                ])
+                text=(
+                    f"✨ *Зеркало Судеб обновилось до версии {bot_version}!* 🌙\n"
+                    "Чтобы активировать все улучшения — нажми на команду ниже.\n"
+                    "Твои данные, баланс и история — в полной сохранности.\n\n"
+                    "👉 `/start`"
+                ),
+                parse_mode='Markdown'
             )
             sent_count += 1
         except Exception as e:
@@ -858,7 +854,6 @@ def main():
     application.add_handler(CallbackQueryHandler(get_by_referral, pattern="^get_by_referral$"))
     application.add_handler(CallbackQueryHandler(handle_feedback_button, pattern="^feedback_(yes|no)_"))
     application.add_handler(CallbackQueryHandler(show_full_reading, pattern="^full_reading_"))
-    application.add_handler(CallbackQueryHandler(force_update_handler, pattern="^force_update$"))
     application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
 
     # Запускаем бота
