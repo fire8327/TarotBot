@@ -258,6 +258,8 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif user_input == '📜 Мои последние расклады':
         await show_reading_history(update, context)
         return MAIN_MENU
+    elif user_input == '⬅️ Назад в меню':
+        return MAIN_MENU
     else:
         await update.message.reply_text(
             "🌑 Я не понял твой знак... Выбери путь из меню.",
@@ -289,7 +291,7 @@ async def generate_full_reading(reading_type, user_question=None, user_name="И�
         - Защитную карту
         - Прогноз на завтра
         Будь мудрым, образным, но прямым. Обращайся на "ты".
-        Объем: 250-400 слов. Только на русском.
+        Объем: 250-400 слов. Только на русском. Используй эмодзи.
         """
         prompt = base_prompt
 
@@ -366,7 +368,10 @@ async def handle_reading_type_selection(update: Update, context: ContextTypes.DE
 
             keyboard = [
                 [InlineKeyboardButton(f"🪙 Купить за {STAR_PRICE_PER_READING} ⭐", callback_data="buy_pack_1")],
-                [InlineKeyboardButton("🤝 Получить за приглашение друга", callback_data="get_by_referral")]
+                await update.message.reply_text(
+                    "💫 Хочешь полную версию? Пригласи друга — и получи расклад бесплатно!",
+                    reply_markup=reply_markup
+                )
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -438,6 +443,7 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Привет, {user_name}! 👋
 🪄 Доступно раскладов: {balance}
 🌌 Всего использовано: {total_used}
+👥 Приглашено друзей: {user.get('referral_count', 0)}
 🔮 Ты на пути к просветлению!
 Чем чаще ты гадаешь — тем яснее становится твоя судьба.
 👇 Выбери действие:
@@ -670,23 +676,20 @@ async def get_by_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = query.from_user.id
     user = get_user(user_id)
+    ref_link = f"https://t.me/speculora_bot?start=ref_{user_id}"
 
     if user['referral_count'] >= 1:
-        new_balance = user['readings_balance'] + 1
-        update_user_balance(user_id, new_balance)
-        update_conversion_step(user_id, 'got_by_referral')
-
-        await query.edit_message_text(
-            "🎉 Ура! Ты пригласил хотя бы одного друга — дарю тебе 1 бесплатный полный расклад! 🌙\n"
-            "Используй его сейчас — выбери «🔮 Сделать расклад»!",
+        await query.message.reply_text(
+            f"🎉 Ты уже пригласил {user['referral_count']} друзей! Бонусы за них уже начислены автоматически 🌙\n"
+            "Продолжай делиться ссылкой — каждый новый друг приносит тебе +1 расклад!",
             reply_markup=main_menu_keyboard()
         )
     else:
-        ref_link = f"https://t.me/speculora_bot?start=ref_{user_id}"
-        await query.edit_message_text(
-            "✨ Чтобы получить бесплатный расклад — пригласи хотя бы одного друга!\n"
-            f"Твоя ссылка: {ref_link}\n\n"
-            "Когда друг зарегистрируется — ты сразу получишь +1 расклад!",
+        await query.message.reply_text(
+            "✨ Пригласи хотя бы одного друга, чтобы получить бонус!\n"
+            f"Твоя ссылка: `{ref_link}`\n\n"
+            "👉 Как только друг зарегистрируется — ты автоматически получишь +1 бесплатный расклад!",
+            parse_mode='Markdown',
             reply_markup=main_menu_keyboard()
         )
 
