@@ -34,7 +34,7 @@ TOKEN = os.getenv("TOKEN")
 ADMIN_USER_IDS = {780161853}
 
 # --- 🔑 КОНСТАНТЫ ДЛЯ БЫСТРОЙ НАСТРОЙКИ ---
-BOT_VERSION = "v1.1"  # <-- МЕНЯЙ ЭТУ ВЕРСИЮ ПРИ КАЖДОМ ДЕПЛОЕ
+BOT_VERSION = "v1.11"  # <-- МЕНЯЙ ЭТУ ВЕРСИЮ ПРИ КАЖДОМ ДЕПЛОЕ
 ACTIVE_USERS_DAYS = 7  # Рассылка обновления пользователям, активным за последние N дней
 STAR_PRICE_PER_READING = 50  # Цена одного расклада в ⭐
 REFERRAL_BONUS_READINGS = 1  # Сколько раскладов даём за приглашение
@@ -241,6 +241,12 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return AWAITING_READING_TYPE
     elif user_input == '🤝 Пригласить друга':
         await invite_friend(update, context)
+        return MAIN_MENU
+    elif user_input == '🛍️ Купить расклады':
+        await buy_readings(update, context)
+        return MAIN_MENU
+    elif user_input == '📜 Мои последние расклады':
+        await show_reading_history(update, context)
         return MAIN_MENU
     else:
         await update.message.reply_text(
