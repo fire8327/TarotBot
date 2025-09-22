@@ -368,7 +368,7 @@ async def handle_reading_type_selection(update: Update, context: ContextTypes.DE
 
             keyboard = [
                 [InlineKeyboardButton(f"🪙 Купить за {STAR_PRICE_PER_READING} ⭐", callback_data="buy_pack_1")],
-                [InlineKeyboardButton("🤝 Пригласить друга и получить бесплатно", callback_data="get_by_referral")]
+                [InlineKeyboardButton("🤝 Бесплатно за приглашение", callback_data="menu_invite_friend")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -522,18 +522,34 @@ async def card_of_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def invite_friend(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
+    # Определяем, откуда пришёл вызов — из сообщения или из callback
+    if update.message:
+        user_id = update.message.from_user.id
+        send_method = update.message.reply_text
+    elif update.callback_query:
+        user_id = update.callback_query.from_user.id
+        send_method = update.callback_query.message.reply_text
+        await update.callback_query.answer()  # Отвечаем на callback, чтобы убрать "часики"
+    else:
+        return
+
     bot_username = "speculora_bot"
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
 
-    await update.message.reply_text(
+    await send_method(
         "✨ *Твоя магическая ссылка готова!* ✨\n\n"
         "Отправь её подруге/другу — когда он/она зарегистрируется, ты получишь +1 бесплатный расклад 🌙\n"
         "А она начнёт с бесплатного пророчества!",
         parse_mode='Markdown',
         reply_markup=main_menu_keyboard()
     )
-    await update.message.reply_text(ref_link, reply_markup=main_menu_keyboard())
+    await send_method(ref_link, reply_markup=main_menu_keyboard())
+
+async def menu_invite_friend(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    # Просто вызываем существующую функцию invite_friend, передавая ей update и context
+    await invite_friend(query, context)
 
 # --- 💰 ПОКУПКИ И ПЛАТЕЖИ ---
 async def buy_readings(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -667,28 +683,6 @@ async def handle_feedback_button(update: Update, context: ContextTypes.DEFAULT_T
             ])
         )
 
-async def get_by_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user_id = query.from_user.id
-    user = get_user(user_id)
-    ref_link = f"https://t.me/speculora_bot?start=ref_{user_id}"
-
-    if user['referral_count'] >= 1:
-        await query.message.reply_text(
-            f"🎉 Ты уже пригласил {user['referral_count']} друзей! Бонусы за них уже начислены автоматически 🌙\n"
-            "Продолжай делиться ссылкой — каждый новый друг приносит тебе +1 расклад!",
-            reply_markup=main_menu_keyboard()
-        )
-    else:
-        await query.message.reply_text(
-            "✨ Пригласи хотя бы одного друга, чтобы получить бонус!\n"
-            f"Твоя ссылка: `{ref_link}`\n\n"
-            "👉 Как только друг зарегистрируется — ты автоматически получишь +1 бесплатный расклад!",
-            parse_mode='Markdown',
-            reply_markup=main_menu_keyboard()
-        )
 
 # --- 📜 ПРОЧИЕ УТИЛИТЫ ---
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -861,9 +855,9 @@ def main():
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     application.add_handler(MessageHandler(filters.Regex('^🛍️ Купить расклады$'), buy_readings))
     application.add_handler(CallbackQueryHandler(button_buy_pack, pattern="^buy_pack_"))
-    application.add_handler(CallbackQueryHandler(get_by_referral, pattern="^get_by_referral$"))
     application.add_handler(CallbackQueryHandler(handle_feedback_button, pattern="^feedback_(yes|no)_"))
     application.add_handler(CallbackQueryHandler(show_full_reading, pattern="^full_reading_"))
+    application.add_handler(CallbackQueryHandler(menu_invite_friend, pattern="^menu_invite_friend$"))
     application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
 
     # Запускаем бота
