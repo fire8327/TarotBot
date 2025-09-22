@@ -819,7 +819,7 @@ async def handle_update_broadcast(update: Update, context: ContextTypes.DEFAULT_
     for user in users:
         try:
             await context.bot.send_message(
-                chat_id=5688682851,
+                chat_id=user['user_id'],
                 text=(
                     f"✨ *Зеркало Судеб обновилось до версии {bot_version}!* 🌙\n"
                     "Твои данные, баланс и история — в полной сохранности.\n\n"
