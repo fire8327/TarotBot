@@ -127,41 +127,47 @@ def reading_type_keyboard():
 
 # --- 🧩 ОСНОВНЫЕ ОБРАБОТЧИКИ ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = get_user(user_id)
+    args = context.args  # Получаем аргументы после /start
+    if args and args[0] == 'update':
+        await update.message.reply_text("🌀 Начинаем обновление зеркала...")
+        await update.message.reply_text("🌀 Зеркало обновлено!")
+    else:    
 
-    referrer_id = None
-    if context.args and context.args[0].startswith('ref_'):
-        try:
-            referrer_id = int(context.args[0].replace('ref_', ''))
-            if referrer_id == user_id:
+        user_id = update.effective_user.id
+        user = get_user(user_id)
+
+        referrer_id = None
+        if context.args and context.args[0].startswith('ref_'):
+            try:
+                referrer_id = int(context.args[0].replace('ref_', ''))
+                if referrer_id == user_id:
+                    referrer_id = None
+            except ValueError:
                 referrer_id = None
-        except ValueError:
-            referrer_id = None
 
-    user_name = user['name'] if user['name'] else ""
+        user_name = user['name'] if user['name'] else ""
 
-    if user_name:
-        await update.message.reply_text(
-            f"🌑 *Ты вернулся, {user_name}...*\n"
-            "Зеркало Судеб вновь открыто для тебя. Выбери путь:",
-            parse_mode='Markdown',
-            reply_markup=main_menu_keyboard()
-        )
-        return MAIN_MENU
-    else:
-        if referrer_id:
-            context.user_data['referrer_id'] = referrer_id
+        if user_name:
+            await update.message.reply_text(
+                f"🌑 *Ты вернулся, {user_name}...*\n"
+                "Зеркало Судеб вновь открыто для тебя. Выбери путь:",
+                parse_mode='Markdown',
+                reply_markup=main_menu_keyboard()
+            )
+            return MAIN_MENU
+        else:
+            if referrer_id:
+                context.user_data['referrer_id'] = referrer_id
 
-        await update.message.reply_text(
-            "🌙 *Добро пожаловать в Зеркало Судеб* 🌙\n\n"
-            "Я — хранитель древних знаний, проводник между мирами.\n\n"
-            "Как мне звать тебя в Книге Судеб? Можешь указать имя или титул. "
-            "Если предпочитаешь остаться тенью — напиши «Аноним».",
-            parse_mode='Markdown',
-            reply_markup=ReplyKeyboardRemove()
-        )
-        return GET_NAME
+            await update.message.reply_text(
+                "🌙 *Добро пожаловать в Зеркало Судеб* 🌙\n\n"
+                "Я — хранитель древних знаний, проводник между мирами.\n\n"
+                "Как мне звать тебя в Книге Судеб? Можешь указать имя или титул. "
+                "Если предпочитаешь остаться тенью — напиши «Аноним».",
+                parse_mode='Markdown',
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return GET_NAME
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -814,7 +820,7 @@ async def handle_update_broadcast(update: Update, context: ContextTypes.DEFAULT_
                     f"✨ *Зеркало Судеб обновилось до версии {bot_version}!* 🌙\n"
                     "Твои данные, баланс и история — в полной сохранности.\n\n"
                     "Нажми на кнопку ниже, чтобы применить обновления.\n\n"
-                    f"🔗 [🌀 Обновить Зеркало](https://t.me/speculora_bot?start)"
+                    f"🔗 [🌀 Обновить Зеркало](https://t.me/speculora_bot?start=update)"
                 ),
                 parse_mode='Markdown'
             )
