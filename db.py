@@ -184,7 +184,7 @@ def get_active_users(days=7):
     with conn.cursor() as cur:
         cur.execute("""
             SELECT user_id FROM users 
-            WHERE last_active_date >= CURRENT_DATE - INTERVAL '%s days'
+            WHERE created_at >= NOW() - INTERVAL '%s days'
         """, (days,))
         users = cur.fetchall()
     conn.close()
