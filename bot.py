@@ -43,7 +43,7 @@ REFERRAL_BONUS_READINGS = 1  # Сколько раскладов даём за �
 PACKAGES = {
     "pack_1": {"name": "1 расклад", "price_stars": STAR_PRICE_PER_READING, "readings": 1},
     "pack_5": {"name": "5 раскладов", "price_stars": STAR_PRICE_PER_READING * 4, "readings": 5},
-    "pack_30": {"name": "Подписка на месяц (30 шт.)", "price_stars": STAR_PRICE_PER_READING * 10, "readings": 30},
+    "pack_30": {"name": "Подписка на месяц (30 шт.)", "price_stars": STAR_PRICE_PER_READING * 15, "readings": 30},
 }
 
 # --- Состояния диалога ---
