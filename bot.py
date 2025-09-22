@@ -127,7 +127,7 @@ def reading_type_keyboard():
 
 # --- 🧩 ОСНОВНЫЕ ОБРАБОТЧИКИ ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     user = get_user(user_id)
 
     referrer_id = None
@@ -748,7 +748,25 @@ async def show_full_reading(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- 🚨 ОБРАБОТЧИКИ ОБНОВЛЕНИЯ И ФОЛБЭКИ ---
 async def force_update_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Вызывает /start при нажатии кнопки обновления."""
-    await start(update, context)
+    # Определяем user_id в зависимости от типа обновления
+    if update.message:
+        user_id = update.message.from_user.id
+    elif update.callback_query:
+        user_id = update.callback_query.from_user.id
+        # Отвечаем на callback_query, чтобы убрать "часики" на кнопке
+        await update.callback_query.answer()
+    else:
+        return
+
+    # Создаём "искусственное" сообщение /start
+    fake_update = Update(
+        update_id=update.update_id,
+        message=update.message or update.callback_query.message
+    )
+    fake_update.message.from_user = update.effective_user
+    fake_update.message.text = "/start"
+
+    await start(fake_update, context)
 
 async def global_fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None:
@@ -793,7 +811,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- 📢 Рассылка обновления (только для админов) ---
 async def handle_update_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /update_broadcast — только для админов."""
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
 
     if user_id not in ADMIN_USER_IDS:
         await update.message.reply_text("🌑 Ты не имеешь доступа к этой команде.", parse_mode='Markdown')
