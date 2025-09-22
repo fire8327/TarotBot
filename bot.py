@@ -368,10 +368,6 @@ async def handle_reading_type_selection(update: Update, context: ContextTypes.DE
 
             keyboard = [
                 [InlineKeyboardButton(f"🪙 Купить за {STAR_PRICE_PER_READING} ⭐", callback_data="buy_pack_1")],
-                await update.message.reply_text(
-                    "💫 Хочешь полную версию? Пригласи друга — и получи расклад бесплатно!",
-                    reply_markup=reply_markup
-                )
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
