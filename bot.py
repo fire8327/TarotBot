@@ -809,14 +809,16 @@ async def handle_update_broadcast(update: Update, context: ContextTypes.DEFAULT_
     for user in users:
         try:
             await context.bot.send_message(
-                chat_id=user['user_id'],
+                """ chat_id=user['user_id'], """
+                chat_id=5688682851,
                 text=(
                     f"✨ *Зеркало Судеб обновилось до версии {bot_version}!* 🌙\n"
-                    "Чтобы активировать все улучшения — нажми на команду ниже.\n"
                     "Твои данные, баланс и история — в полной сохранности.\n\n"
-                    "👉 `/start`"
+                    "Нажми на кнопку ниже, чтобы применить обновления.\n\n"
+                    f"🔗 [🌀 Обновить Зеркало](https://t.me/speculora?start)"
                 ),
                 parse_mode='Markdown'
+                disable_web_page_preview=True
             )
             sent_count += 1
         except Exception as e:
