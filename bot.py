@@ -34,7 +34,7 @@ TOKEN = os.getenv("TOKEN")
 ADMIN_USER_IDS = {780161853}
 
 # --- 🔑 КОНСТАНТЫ ДЛЯ БЫСТРОЙ НАСТРОЙКИ ---
-BOT_VERSION = "v1.11"  # <-- МЕНЯЙ ЭТУ ВЕРСИЮ ПРИ КАЖДОМ ДЕПЛОЕ
+BOT_VERSION = "v1.12"  # <-- МЕНЯЙ ЭТУ ВЕРСИЮ ПРИ КАЖДОМ ДЕПЛОЕ
 ACTIVE_USERS_DAYS = 7  # Рассылка обновления пользователям, активным за последние N дней
 STAR_PRICE_PER_READING = 50  # Цена одного расклада в ⭐
 REFERRAL_BONUS_READINGS = 1  # Сколько раскладов даём за приглашение
@@ -754,25 +754,7 @@ async def show_full_reading(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- 🚨 ОБРАБОТЧИКИ ОБНОВЛЕНИЯ И ФОЛБЭКИ ---
 async def force_update_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Вызывает /start при нажатии кнопки обновления."""
-    # Определяем user_id в зависимости от типа обновления
-    if update.message:
-        user_id = update.message.from_user.id
-    elif update.callback_query:
-        user_id = update.callback_query.from_user.id
-        # Отвечаем на callback_query, чтобы убрать "часики" на кнопке
-        await update.callback_query.answer()
-    else:
-        return
-
-    # Создаём "искусственное" сообщение /start
-    fake_update = Update(
-        update_id=update.update_id,
-        message=update.message or update.callback_query.message
-    )
-    fake_update.message.from_user = update.effective_user
-    fake_update.message.text = "/start"
-
-    await start(fake_update, context)
+    return await start(update, context)
 
 async def global_fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None:
@@ -832,7 +814,7 @@ async def handle_update_broadcast(update: Update, context: ContextTypes.DEFAULT_
         try:
             await context.bot.send_message(
                 chat_id=user['user_id'],
-                text=f"✨ *Speculo обновился до версии {bot_version}!* 🌙\n"
+                text=f"✨ *Зеркало Судеб обновился до версии {bot_version}!* 🌙\n"
                      "Чтобы активировать все улучшения — нажми кнопку ниже.\n"
                      "Твои данные, баланс и история — в полной сохранности.",
                 parse_mode='Markdown',
