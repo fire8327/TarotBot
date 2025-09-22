@@ -134,6 +134,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "✅ Зеркало успешно обновлено!",
             reply_markup=main_menu_keyboard()
         )
+        return MAIN_MENU
     else:    
 
         user_id = update.effective_user.id
