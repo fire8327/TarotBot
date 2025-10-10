@@ -136,7 +136,8 @@ from db import (
     init_db, get_user, update_user_name, update_user_balance, increment_total_used,
     save_purchase, save_reading, update_daily_card, increment_referral_count,
     update_user_last_active, increment_free_readings_used, update_conversion_step,
-    update_user_last_update_notified, get_active_users
+    update_user_last_update_notified, get_active_users, 
+    get_all_users, add_readings_to_user, add_readings_to_all_users, reset_free_readings_counter  # 🔥 ДОБАВИТЬ ЭТИ
 )
 
 # --- 🎴 Списки карт ---
@@ -1010,8 +1011,6 @@ async def handle_admin_actions(update: Update, context: ContextTypes.DEFAULT_TYP
         return MAIN_MENU
     
     if user_input == '🎁 Добавить расклады ВСЕМ':
-        # Добавляем 1 расклад всем пользователям
-        from db import add_readings_to_all_users, get_all_users
         add_readings_to_all_users(1)
         users_count = len(get_all_users())
         
