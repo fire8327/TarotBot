@@ -47,7 +47,8 @@ PACKAGES = {
 }
 
 # --- Состояния диалога ---
-GET_NAME, MAIN_MENU, CONFIRM_READING, AWAITING_QUESTION, AWAITING_READING_TYPE, AWAITING_USER_ID, AWAITING_FEEDBACK, ADMIN_REPLY = range(8)
+# В состояния добавьте:
+GET_NAME, MAIN_MENU, CONFIRM_READING, AWAITING_QUESTION, AWAITING_READING_TYPE, AWAITING_USER_ID, AWAITING_FEEDBACK, ADMIN_REPLY, AWAITING_ADMIN_REPLY = range(9)
 
 # --- 📝 ТЕКСТОВЫЕ СООБЩЕНИЯ ---
 TEXTS = {
@@ -1099,16 +1100,35 @@ async def notify_admin_about_new_message(context: ContextTypes.DEFAULT_TYPE, use
     """Уведомление админа о новом сообщении"""
     for admin_id in ADMIN_USER_IDS:
         try:
+            # Создаем клавиатуру для быстрого ответа
+            keyboard = [
+                [InlineKeyboardButton("💌 Ответить пользователю", callback_data=f"quick_reply_{user_id}")],
+                [InlineKeyboardButton("📋 Все сообщения", callback_data="show_all_messages")
+            ]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
             await context.bot.send_message(
                 chat_id=admin_id,
                 text=f"📨 *НОВОЕ СООБЩЕНИЕ ОТ ПОЛЬЗОВАТЕЛЯ*\n\n"
-                     f"👤 Пользователь: {user_name} (ID: {user_id})\n"
+                     f"👤 Пользователь: {user_name}\n"
+                     f"🆔 ID: {user_id}\n"
                      f"💬 Сообщение: {message}\n\n"
-                     f"Для ответа используйте команду /reply_{user_id}",
-                parse_mode='Markdown'
+                     f"*Нажми кнопку ниже для быстрого ответа* ⬇️",
+                parse_mode='Markdown',
+                reply_markup=reply_markup
             )
+            logger.info(f"✅ Уведомление отправлено админу {admin_id}")
+            
         except Exception as e:
-            logger.error(f"Не удалось уведомить админа {admin_id}: {e}")
+            logger.error(f"❌ Не удалось уведомить админа {admin_id}: {str(e)}")
+            # Попробуем отправить простое сообщение без форматирования
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=f"Новое сообщение от {user_name} (ID: {user_id}): {message[:100]}..."
+                )
+            except Exception as e2:
+                logger.error(f"❌ Полный сбой отправки админу {admin_id}: {str(e2)}")
 
 async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /reply для админов"""
@@ -1168,7 +1188,7 @@ async def handle_messages_list(update: Update, context: ContextTypes.DEFAULT_TYP
         text += f"👤 {user_name} (ID: {msg['user_id']})\n"
         text += f"💬 {msg['message_text'][:100]}...\n"
         text += f"⏰ {msg['created_at'].strftime('%d.%m %H:%M')}\n"
-        text += f"📎 Ответить: /reply_{msg['user_id']} ваш_текст\n\n"
+        text += f"📎 Ответить: /reply_{msg['user_id']} ваш текст\n\n"
     
     await update.message.reply_text(text, parse_mode='Markdown')
 
@@ -1260,6 +1280,132 @@ async def send_bonus_notification_to_all(context: ContextTypes.DEFAULT_TYPE):
             logger.warning(f"Не удалось отправить бонусное уведомление пользователю {user['user_id']}: {e}")
     
     logger.info(f"Бонусные уведомления отправлены: {sent_count}/{len(users)}")
+
+async def handle_quick_reply_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка нажатия кнопки быстрого ответа"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_USER_IDS:
+        await query.message.reply_text("❌ Доступ запрещён")
+        return
+    
+    # Извлекаем ID пользователя из callback_data: "quick_reply_123456"
+    target_user_id = int(query.data.replace('quick_reply_', ''))
+    context.user_data['reply_to_user'] = target_user_id
+    
+    # Получаем информацию о пользователе
+    target_user = get_user(target_user_id)
+    target_user_name = target_user.get('name', 'Неизвестный')
+    
+    # Сохраняем оригинальное сообщение для контекста
+    context.user_data['original_message'] = query.message.text
+    
+    await query.message.reply_text(
+        f"💌 *Ответ пользователю:* {target_user_name} (ID: {target_user_id})\n\n"
+        f"Введите ваш ответ (или нажмите '❌ Отменить'):",
+        parse_mode='Markdown',
+        reply_markup=ReplyKeyboardMarkup([['❌ Отменить ответ']], resize_keyboard=True)
+    )
+    
+    return AWAITING_ADMIN_REPLY
+
+async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ввода ответа от админа"""
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_USER_IDS:
+        await update.message.reply_text("❌ Доступ запрещён")
+        return MAIN_MENU
+    
+    reply_text = update.message.text
+    
+    if reply_text == '❌ Отменить ответ':
+        await update.message.reply_text(
+            "Ответ отменён",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return MAIN_MENU
+    
+    target_user_id = context.user_data.get('reply_to_user')
+    
+    if not target_user_id:
+        await update.message.reply_text("❌ Ошибка: не найден пользователь для ответа")
+        return MAIN_MENU
+    
+    try:
+        # Отправляем ответ пользователю
+        await context.bot.send_message(
+            chat_id=target_user_id,
+            text=f"💌 *Ответ от разработчика:*\n\n{reply_text}",
+            parse_mode='Markdown'
+        )
+        
+        # Сохраняем в историю
+        target_user = get_user(target_user_id)
+        target_user_name = target_user.get('name', 'Неизвестный')
+        save_user_message(user_id, "Admin", f"Ответ для {target_user_name}: {reply_text}", "admin_reply")
+        
+        # Помечаем исходное сообщение как отвеченное
+        # (здесь нужно будет доработать логику пометки конкретного сообщения)
+        
+        await update.message.reply_text(
+            f"✅ Ответ отправлен пользователю {target_user_name}!",
+            reply_markup=main_menu_keyboard()
+        )
+        
+        # Очищаем временные данные
+        context.user_data.pop('reply_to_user', None)
+        context.user_data.pop('original_message', None)
+        
+    except Exception as e:
+        logger.error(f"Ошибка отправки ответа пользователю {target_user_id}: {e}")
+        await update.message.reply_text(
+            f"❌ Ошибка отправки: {str(e)}",
+            reply_markup=main_menu_keyboard()
+        )
+    
+    return MAIN_MENU
+
+async def handle_show_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать все сообщения с пагинацией"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_USER_IDS:
+        return
+    
+    messages = get_unread_messages()
+    
+    if not messages:
+        await query.message.reply_text("📭 Нет новых сообщений")
+        return
+    
+    # Показываем первые 5 сообщений с кнопками для ответа
+    text = "📨 *Новые сообщения:*\n\n"
+    for i, msg in enumerate(messages[:5]):
+        user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
+        text += f"*{i+1}. {user_name}* (ID: {msg['user_id']})\n"
+        text += f"💬 {msg['message_text'][:150]}...\n"
+        text += f"⏰ {msg['created_at'].strftime('%d.%m %H:%M')}\n\n"
+    
+    # Создаем клавиатуру с кнопками для быстрого ответа
+    keyboard = []
+    for i, msg in enumerate(messages[:5]):
+        user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
+        keyboard.append([InlineKeyboardButton(
+            f"💌 Ответить {user_name[:15]}...", 
+            callback_data=f"quick_reply_{msg['user_id']}"
+        )])
+    
+    keyboard.append([InlineKeyboardButton("🔄 Обновить список", callback_data="show_all_messages")])
+    
+    await query.message.reply_text(
+        text,
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 # --- 🏁 ЗАПУСК БОТА ---
 def main():
