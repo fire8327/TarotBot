@@ -318,6 +318,17 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     update_user_last_active(user_id)
 
+    admin_buttons = [
+        '🎁 Добавить расклады ВСЕМ',
+        '👤 Добавить расклады пользователю', 
+        '🔄 Обнулить счётчики бесплатных',
+        '📢 Сделать рассылку',
+        '🏠 Главное меню'
+    ]
+    
+    if user_input in admin_buttons:
+        return await handle_admin_actions(update, context)
+
     if user_input == '⭐ Мой профиль':
         await show_profile(update, context)
         return MAIN_MENU
@@ -1138,8 +1149,7 @@ def main():
         entry_points=[CommandHandler('start', start)],
         states={
             GET_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
-            MAIN_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu),
-            MessageHandler(filters.Regex('^(🎁 Добавить расклады ВСЕМ|👤 Добавить расклады пользователю|🔄 Обнулить счётчики бесплатных|📢 Сделать рассылку|🏠 Главное меню)$'), handle_admin_actions)],
+            MAIN_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu)],
             AWAITING_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_question)],
             AWAITING_READING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_reading_type_selection)],
             AWAITING_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_id_input)],
