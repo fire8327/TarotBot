@@ -189,3 +189,42 @@ def get_active_users(days=7):
         users = cur.fetchall()
     conn.close()
     return users
+
+def get_all_users():
+    """Получить всех пользователей"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM users")
+    users = [{'user_id': row[0]} for row in cursor.fetchall()]
+    conn.close()
+    return users
+
+def add_readings_to_user(user_id, readings_count):
+    """Добавить расклады пользователю"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET readings_balance = readings_balance + ? WHERE user_id = ?",
+        (readings_count, user_id)
+    )
+    conn.commit()
+    conn.close()
+
+def add_readings_to_all_users(readings_count):
+    """Добавить расклады всем пользователям"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET readings_balance = readings_balance + ?",
+        (readings_count,)
+    )
+    conn.commit()
+    conn.close()
+
+def reset_free_readings_counter():
+    """Обнулить счётчик бесплатных раскладов для всех пользователей"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET free_readings_used = 0")
+    conn.commit()
+    conn.close()

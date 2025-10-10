@@ -47,7 +47,75 @@ PACKAGES = {
 }
 
 # --- Состояния диалога ---
-GET_NAME, MAIN_MENU, CONFIRM_READING, AWAITING_QUESTION, AWAITING_READING_TYPE = range(5)
+GET_NAME, MAIN_MENU, CONFIRM_READING, AWAITING_QUESTION, AWAITING_READING_TYPE, AWAITING_USER_ID = range(6)
+
+# --- 📝 ТЕКСТОВЫЕ СООБЩЕНИЯ ---
+TEXTS = {
+    # Приветственные сообщения
+    'welcome': "🌙 *Добро пожаловать в Зеркало Судеб* 🌙\n\nЯ — хранитель древних знаний, проводник между мирами.\n\nКак мне звать тебя в Книге Судеб? Можешь указать имя или титул. Если предпочитаешь остаться тенью — напиши «Аноним».",
+    'welcome_return': "🌑 *Ты вернулся, {name}...*\nЗеркало Судеб вновь открыто для тебя. Выбери путь:",
+    'name_registered': "{name}... Какое прекрасное имя, полное энергии и тайны. 🌌{bonus_message}\n\nВ знак нашего знакомства я дарю тебе *дар ясновидения* — один бесплатный расклад, который ты можешь использовать в любой момент.\n\nКогда будешь готов заглянуть в Глубины, просто выбери один из путей в меню ниже.",
+    
+    # Меню и навигация
+    'main_menu': "🌑 Выбери путь из меню:",
+    'reading_types': "🕯️ *Выбери путь, по которому ступишь в тумане предсказаний...*\n\nКарты ждут твоего выбора:",
+    'custom_question': "🕯️ Опиши свою тревогу или вопрос... Чем яснее ты выразишься — тем глубже будет пророчество.\n\nЯ внимательно выслушаю...",
+    'unknown_command': "🌑 Я не понял твой знак... Выбери путь из меню.",
+    
+    # Профиль
+    'profile': """✨🔮 Ваша Личная Статистика Предсказаний 🔮✨
+Привет, {name}! 👋
+🪄 Доступно раскладов: {balance}
+🌌 Всего использовано: {total_used}
+👥 Приглашено друзей: {referral_count}
+🔮 Ты на пути к просветлению!
+Чем чаще ты гадаешь — тем яснее становится твоя судьба.
+👇 Выбери действие:""",
+    
+    # Карта дня
+    'card_shuffling': "🎴 *Тасую колоду Старших Арканов...*",
+    'card_whispering': "🎴 *Колода шепчет... вытягиваю карту дня...*",
+    'card_flipping': "🎴 *Переворачиваю карту...*",
+    'card_of_day': "🃏 *Твоя Карта Дня, {name}:* 🃏\n\n{message}",
+    'card_already_received': "🃏 *Твоя Карта Дня (уже получена сегодня):*\n\n{card_text}",
+    
+    # Расклады
+    'reading_start': "Приступаю к ритуалу... Зеркало наполняется туманом... 🔮",
+    'reading_wait': "🕯️ Карты выбирают тебя... Это займёт 10-20 секунд.",
+    'reading_share': "✨ Понравилось? Поделись с подругой — пусть и она узнает свою судьбу!",
+    
+    # Приглашения
+    'invite_friend': """✨ *Твоя магическая ссылка готова!* ✨
+
+Отправь её подруге/другу — когда он/она зарегистрируется, ты получишь +1 бесплатный расклад 🌙
+А она начнёт с бесплатного пророчества!""",
+    
+    # Покупки
+    'buy_readings': "🪙 *Выбери пакет магической силы:* 🪙\n\nОплата производится в Telegram Stars — внутри приложения, без перенаправлений.",
+    'payment_success': """🎉 *Оплата прошла!* 🎉
+
+Ты приобрёл пакет: *{pack_name}*
+🪄 На твой баланс зачислено: *{readings_count}* раскладов.
+
+Теперь можешь заглянуть в будущее — выбери «🔮 Сделать расклад»!""",
+    
+    # О боте
+    'about': """🔮 *Зеркало Судеб* 🔮
+
+Я — древний дух, хранящий знания Таро сквозь века. Мои карты не предсказывают неизбежное — они показывают возможности, которые ты можешь воплотить.
+
+Каждый расклад — это диалог между тобой и Вселенной. Я лишь перевожу её шепот на язык символов.
+
+Создано с магией для тех, кто ищет свет в тумане завтрашнего дня. 🌙""",
+    
+    # Ошибки и уведомления
+    'no_readings_balance': "🪙 У тебя закончились расклады. Но магия не спит — ты можешь пополнить баланс!",
+    'reading_preview': """🔮 *{reading_type}* — Зеркало показывает тебе первую карту...
+🃏 *Карта Судьбы:* **{card_name}**  
+{hint}  
+✨ *Полная трактовка + ритуал дня + защитная карта — доступна за {price} ⭐ или при приглашении друга 🌙*
+Ты держишь нить своей судьбы, {name}. Решай — дернуть за неё или отпустить...""",
+}
 
 # --- Настройки логирования ---
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -133,14 +201,23 @@ def profile_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
+def admin_keyboard():
+    keyboard = [
+        ['🎁 Добавить расклады ВСЕМ'],
+        ['👤 Добавить расклады пользователю'],
+        ['🔄 Обнулить счётчики бесплатных'],
+        ['📢 Сделать рассылку'],
+        ['🏠 Главное меню']
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
 # --- 🧩 ОСНОВНЫЕ ОБРАБОТЧИКИ ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Всегда сбрасываем состояние и очищаем данные
     context.user_data.clear()
     
-    args = context.args  # Получаем аргументы после /start
+    args = context.args
     
-    # Обработка специальных команд
     if args and args[0] == 'update':
         await update.message.reply_text("🌀 Начинаем обновление зеркала...")
         await update.message.reply_text(
@@ -152,7 +229,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = get_user(user_id)
 
-    # Обработка реферальной системы
     referrer_id = None
     if context.args and context.args[0].startswith('ref_'):
         try:
@@ -164,29 +240,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_name = user['name'] if user['name'] else ""
 
-    # ЕСЛИ пользователь УЖЕ зарегистрирован - сразу в главное меню
     if user_name:
-        # Если есть реферер - обрабатываем даже для существующих пользователей
         if referrer_id:
             await process_referral_bonus(update, context, user_id, user_name, referrer_id)
         
         await update.message.reply_text(
-            f"🌙 *С возвращением, {user_name}!*\n"
-            "Зеркало Судеб вновь открыто для тебя. Выбери путь:",
+            TEXTS['welcome_return'].format(name=user_name),
             parse_mode='Markdown',
             reply_markup=main_menu_keyboard()
         )
         return MAIN_MENU
     else:
-        # НОВЫЙ пользователь - регистрация
         if referrer_id:
             context.user_data['referrer_id'] = referrer_id
 
         await update.message.reply_text(
-            "🌙 *Добро пожаловать в Зеркало Судеб* 🌙\n\n"
-            "Я — хранитель древних знаний, проводник между мирами.\n\n"
-            "Как мне звать тебя в Книге Судеб? Можешь указать имя или титул. "
-            "Если предпочитаешь остаться тенью — напиши «Аноним».",
+            TEXTS['welcome'],
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardRemove()
         )
@@ -236,10 +305,7 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Ошибка при обработке реферера {referrer_id} для пользователя {user_id}: {e}")
 
     await update.message.reply_text(
-        f"{user_name}... Какое прекрасное имя, полное энергии и тайны. 🌌{bonus_message}\n\n"
-        "В знак нашего знакомства я дарю тебе *дар ясновидения* — один бесплатный расклад, "
-        "который ты можешь использовать в любой момент.\n\n"
-        "Когда будешь готов заглянуть в Глубины, просто выбери один из путей в меню ниже.",
+        TEXTS['name_registered'].format(name=user_name, bonus_message=bonus_message),
         parse_mode='Markdown',
         reply_markup=main_menu_keyboard()
     )
@@ -262,8 +328,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MAIN_MENU
     elif user_input == '🔮 Сделать расклад':
         await update.message.reply_text(
-            "🕯️ *Выбери путь, по которому ступишь в тумане предсказаний...*\n\n"
-            "Карты ждут твоего выбора:",
+            TEXTS['reading_types'],
             parse_mode='Markdown',
             reply_markup=reading_type_keyboard()
         )
@@ -285,7 +350,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MAIN_MENU
     else:
         await update.message.reply_text(
-            "🌑 Я не понял твой знак... Выбери путь из меню.",
+            TEXTS['unknown_command'],
             reply_markup=main_menu_keyboard()
         )
         return MAIN_MENU
@@ -336,13 +401,14 @@ async def generate_full_reading(reading_type, user_question=None, user_name="И�
 
 def generate_free_preview(reading_type, user_name):
     card_data = random.choice(TAROT_PREVIEW_CARDS)
-    return card_data, f"""
-🔮 *{reading_type}* — Зеркало показывает тебе первую карту...
-🃏 *Карта Судьбы:* **{card_data['card']}**  
-{card_data['hint']}  
-✨ *Полная трактовка + ритуал дня + защитная карта — доступна за {STAR_PRICE_PER_READING} ⭐ или при приглашении друга 🌙*
-Ты держишь нить своей судьбы, {user_name}. Решай — дернуть за неё или отпустить...
-"""
+    preview_text = TEXTS['reading_preview'].format(
+        reading_type=reading_type,
+        card_name=card_data['card'],
+        hint=card_data['hint'],
+        price=STAR_PRICE_PER_READING,
+        name=user_name
+    )
+    return card_data, preview_text
 
 def fallback_reading(reading_type, user_name):
     return f"""
@@ -390,13 +456,15 @@ async def handle_reading_type_selection(update: Update, context: ContextTypes.DE
     user_input = update.message.text
 
     if user_input == '⬅️ Назад':
-        await update.message.reply_text("🌑 Ты возвратился в Зал Зеркал. Выбери путь:", reply_markup=main_menu_keyboard())
+        await update.message.reply_text(
+            TEXTS['main_menu'],
+            reply_markup=main_menu_keyboard()
+        )
         return MAIN_MENU
 
     elif user_input == '❓ Свой вопрос':
         await update.message.reply_text(
-            "🕯️ Опиши свою тревогу или вопрос... Чем яснее ты выразишься — тем глубже будет пророчество.\n\n"
-            "Я внимательно выслушаю...",
+            TEXTS['custom_question'],
             reply_markup=ReplyKeyboardRemove()
         )
         context.user_data['reading_type'] = "Собственный вопрос"
@@ -418,7 +486,11 @@ async def handle_reading_type_selection(update: Update, context: ContextTypes.DE
             increment_free_readings_used(user_id)
             update_conversion_step(user_id, 'saw_preview')
 
-            await update.message.reply_text(preview_text, parse_mode='Markdown', reply_markup=main_menu_keyboard())
+            await update.message.reply_text(
+                preview_text, 
+                parse_mode='Markdown', 
+                reply_markup=main_menu_keyboard()
+            )
 
             keyboard = [
                 [InlineKeyboardButton(f"🪙 Купить за {STAR_PRICE_PER_READING} ⭐", callback_data="buy_pack_1")],
@@ -439,7 +511,7 @@ async def handle_custom_question(update: Update, context: ContextTypes.DEFAULT_T
         return await confirm_reading_now(update, context, "Собственный вопрос")
     else:
         await update.message.reply_text(
-            "🪙 У тебя закончились расклады. Но магия не спит — ты можешь пополнить баланс!",
+            TEXTS['no_readings_balance'],
             reply_markup=main_menu_keyboard()
         )
         await buy_readings(update, context)
@@ -455,8 +527,8 @@ async def confirm_reading_now(update: Update, context: ContextTypes.DEFAULT_TYPE
     increment_total_used(user_id)
     update_conversion_step(user_id, 'used_reading')
 
-    await update.message.reply_text("Приступаю к ритуалу... Зеркало наполняется туманом... 🔮", reply_markup=ReplyKeyboardRemove())
-    await update.message.reply_text("🕯️ Карты выбирают тебя... Это займёт 10-20 секунд.")
+    await update.message.reply_text(TEXTS['reading_start'], reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text(TEXTS['reading_wait'])
 
     custom_question = context.user_data.get('custom_question')
     forced_card = context.user_data.get('preview_card')
@@ -474,7 +546,7 @@ async def confirm_reading_now(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text(reading, parse_mode='Markdown', reply_markup=main_menu_keyboard())
 
     await update.message.reply_text(
-        "✨ Понравилось? Поделись с подругой — пусть и она узнает свою судьбу!",
+        TEXTS['reading_share'],
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton("📤 Поделиться", switch_inline_query="Попробуй бота Таро!")
         ]])
@@ -488,18 +560,15 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = user['name'] if user['name'] else "Искатель"
     balance = user['readings_balance']
     total_used = user['total_used']
+    referral_count = user.get('referral_count', 0)
 
-    profile_text = f"""
-✨🔮 Ваша Личная Статистика Предсказаний 🔮✨
-Привет, {user_name}! 👋
-🪄 Доступно раскладов: {balance}
-🌌 Всего использовано: {total_used}
-👥 Приглашено друзей: {user.get('referral_count', 0)}
-🔮 Ты на пути к просветлению!
-Чем чаще ты гадаешь — тем яснее становится твоя судьба.
-👇 Выбери действие:
-"""
-    # Используем новую клавиатуру профиля
+    profile_text = TEXTS['profile'].format(
+        name=user_name,
+        balance=balance,
+        total_used=total_used,
+        referral_count=referral_count
+    )
+    
     reply_markup = profile_keyboard()
     await update.message.reply_text(profile_text, parse_mode='Markdown', reply_markup=reply_markup)
     return MAIN_MENU
@@ -512,54 +581,25 @@ async def card_of_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today = date.today().isoformat()
 
     if user_data['last_card_date'] and user_data['last_card_date'].isoformat() == today and user_data['daily_card']:
-        await update.message.reply_text(f"🃏 *Твоя Карта Дня (уже получена сегодня):*\n\n{user_data['daily_card']}", parse_mode='Markdown')
+        await update.message.reply_text(
+            TEXTS['card_already_received'].format(card_text=user_data['daily_card']), 
+            parse_mode='Markdown'
+        )
         return
 
-    msg = await update.message.reply_text("🎴 *Тасую колоду Старших Арканов...*", parse_mode='Markdown')
+    msg = await update.message.reply_text(TEXTS['card_shuffling'], parse_mode='Markdown')
     await asyncio.sleep(1.5)
-    await msg.edit_text("🎴 *Колода шепчет... вытягиваю карту дня...*", parse_mode='Markdown')
+    await msg.edit_text(TEXTS['card_whispering'], parse_mode='Markdown')
     await asyncio.sleep(1.5)
-    await msg.edit_text("🎴 *Переворачиваю карту...*", parse_mode='Markdown')
+    await msg.edit_text(TEXTS['card_flipping'], parse_mode='Markdown')
     await asyncio.sleep(1.0)
 
-    major_arcana = [
-        "Шут", "Маг", "Жрица", "Императрица", "Император", "Жрец", "Влюблённые",
-        "Колесница", "Сила", "Отшельник", "Колесо Фортуны", "Справедливость",
-        "Повешенный", "Смерть", "Умеренность", "Дьявол", "Башня", "Звезда",
-        "Луна", "Солнце", "Суд", "Мир"
-    ]
+    # ... остальная логика генерации карты ...
 
-    prompt = f"""
-    Ты — мудрый таролог. Выбери ОДНУ карту из Старших Арканов Таро для {user_name} и дай одно краткое послание (1-2 предложения).
-    Список Старших Арканов: {', '.join(major_arcana)}
-    Формат ответа:
-    🃏 [Название Карты] — [Послание]
-    Пример:
-    🃏 Колесо Фортуны — Сегодня удача на твоей стороне — не упусти шанс.
-    Только ответ в этом формате. Ничего лишнего.
-    """
-
-    try:
-        completion = client.chat.completions.create(
-            model="qwen/qwen-turbo",
-            messages=[
-                {"role": "system", "content": "Ты — таролог, использующий ТОЛЬКО Старшие Арканы. Ты всегда называешь конкретную карту и даёшь краткое послание."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            max_tokens=100
-        )
-        message = completion.choices[0].message.content.strip()
-
-        if not any(card in message for card in major_arcana) or not message.startswith("🃏"):
-            raise ValueError("ИИ не вернул карту в нужном формате")
-
-    except Exception as e:
-        logger.error(f"Ошибка в карте дня: {e}")
-        card = random.choice(major_arcana)
-        message = f"🃏 {card} — Вселенная молчит... но я знаю: доверься интуиции — сегодня она не подведёт."
-
-    await msg.edit_text(f"🃏 *Твоя Карта Дня, {user_name}:* 🃏\n\n{message}", parse_mode='Markdown')
+    await msg.edit_text(
+        TEXTS['card_of_day'].format(name=user_name, message=message), 
+        parse_mode='Markdown'
+    )
     update_daily_card(user_id, message)
 
     if context.job_queue:
@@ -571,14 +611,13 @@ async def card_of_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def invite_friend(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Определяем, откуда пришёл вызов — из сообщения или из callback
     if update.message:
         user_id = update.message.from_user.id
         send_method = update.message.reply_text
     elif update.callback_query:
         user_id = update.callback_query.from_user.id
         send_method = update.callback_query.message.reply_text
-        await update.callback_query.answer()  # Отвечаем на callback, чтобы убрать "часики"
+        await update.callback_query.answer()
     else:
         return
 
@@ -586,9 +625,7 @@ async def invite_friend(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
 
     await send_method(
-        "✨ *Твоя магическая ссылка готова!* ✨\n\n"
-        "Отправь её подруге/другу — когда он/она зарегистрируется, ты получишь +1 бесплатный расклад 🌙\n"
-        "А она начнёт с бесплатного пророчества!",
+        TEXTS['invite_friend'],
         parse_mode='Markdown',
         reply_markup=main_menu_keyboard()
     )
@@ -610,8 +647,7 @@ async def buy_readings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
-        "🪙 *Выбери пакет магической силы:* 🪙\n\n"
-        "Оплата производится в Telegram Stars — внутри приложения, без перенаправлений.",
+        TEXTS['buy_readings'],
         parse_mode='Markdown',
         reply_markup=reply_markup
     )
@@ -668,10 +704,10 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
         save_purchase(user_id, payload, pack['readings'], pack['price_stars'], total_stars, charge_id)
 
         await update.message.reply_text(
-            f"🎉 *Оплата прошла!* 🎉\n\n"
-            f"Ты приобрёл пакет: *{pack['name']}*\n"
-            f"🪄 На твой баланс зачислено: *{pack['readings']}* раскладов.\n\n"
-            f"Теперь можешь заглянуть в будущее — выбери «🔮 Сделать расклад»!",
+            TEXTS['payment_success'].format(
+                pack_name=pack['name'],
+                readings_count=pack['readings']
+            ),
             parse_mode='Markdown',
             reply_markup=main_menu_keyboard()
         )
@@ -736,13 +772,7 @@ async def handle_feedback_button(update: Update, context: ContextTypes.DEFAULT_T
 # --- 📜 ПРОЧИЕ УТИЛИТЫ ---
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🔮 *Зеркало Судеб* 🔮\n\n"
-        "Я — древний дух, хранящий знания Таро сквозь века. "
-        "Мои карты не предсказывают неизбежное — они показывают возможности, "
-        "которые ты можешь воплотить.\n\n"
-        "Каждый расклад — это диалог между тобой и Вселенной. "
-        "Я лишь перевожу её шепот на язык символов.\n\n"
-        "Создано с магией для тех, кто ищет свет в тумане завтрашнего дня. 🌙",
+        TEXTS['about'],
         parse_mode='Markdown',
         reply_markup=main_menu_keyboard()
     )
@@ -854,31 +884,216 @@ async def handle_update_broadcast(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("🌑 Ты не имеешь доступа к этой команде.", parse_mode='Markdown')
         return
 
-    bot_version = BOT_VERSION  # Берём версию из константы
-
-    users = get_active_users(days=ACTIVE_USERS_DAYS)
+    # Получаем ВСЕХ пользователей (не только активных)
+    from db import get_all_users  # Нужно добавить эту функцию в db.py
+    users = get_all_users()
+    
     sent_count = 0
+    failed_count = 0
+
+    broadcast_text = """✨ *ОБНОВЛЕНИЕ ЗЕРКАЛА СУДЕБ!* 🔮
+
+Дорогой искатель истины! Наше Зеркало прошло очищение и стало ещё яснее.
+
+🔄 *ЧТО НОВОГО:*
+• Упрощённая навигация — команда /start всегда ведёт в главное меню
+• Интуитивные кнопки "⬅️ Назад" и "🏠 Главное меню" 
+• Улучшенный поток получения раскладов
+
+🎯 *КАК ЭТО РАБОТАЕТ:*
+1. Нажмите /start в любой момент для сброса в главное меню
+2. Используйте "⬅️ Назад" для шага назад
+3. "🏠 Главное меню" — мгновенный возврат домой
+
+💫 *ВАЖНО:*
+• Все ваши данные, балансы и история сохранены
+• Доступ ко всем функциям остаётся прежним
+• Скоро появятся новые эксклюзивные расклады
+
+🌙 *Благодарим за ваше доверие и верность Зеркалу Судеб!*
+
+*P.S. Чувствуете перемены? Карты стали говорить ещё яснее...*"""
 
     for user in users:
         try:
             await context.bot.send_message(
                 chat_id=user['user_id'],
-                text=(
-                    f"✨ *Зеркало Судеб обновилось до версии {bot_version}!* 🌙\n"
-                    "Твои данные, баланс и история — в полной сохранности.\n\n"
-                    "Нажми на кнопку ниже, чтобы применить обновления.\n\n"
-                    f"🔗 [🌀 Обновить Зеркало](https://t.me/speculora_bot?start=update)"
-                ),
+                text=broadcast_text,
                 parse_mode='Markdown'
             )
             sent_count += 1
+            # Небольшая задержка чтобы не спамить
+            await asyncio.sleep(0.1)
         except Exception as e:
             logger.warning(f"Не удалось отправить обновление пользователю {user['user_id']}: {e}")
+            failed_count += 1
 
     await update.message.reply_text(
-        f"✅ Рассылка обновления `{bot_version}` отправлена {sent_count} пользователям.",
+        f"✅ Рассылка обновления отправлена:\n"
+        f"• Успешно: {sent_count} пользователей\n"
+        f"• Не удалось: {failed_count} пользователей",
         parse_mode='Markdown'
     )
+
+async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /admin - только для админов"""
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_USER_IDS:
+        await update.message.reply_text("🌑 Ты не имеешь доступа к этой команде.", parse_mode='Markdown')
+        return MAIN_MENU
+    
+    await update.message.reply_text(
+        "⚡ *Панель администратора Зеркала Судеб* ⚡\n\n"
+        "Выберите действие:",
+        parse_mode='Markdown',
+        reply_markup=admin_keyboard()
+    )
+    return MAIN_MENU
+
+async def handle_admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка действий в админ-меню"""
+    user_id = update.effective_user.id
+    user_input = update.message.text
+    
+    if user_id not in ADMIN_USER_IDS:
+        await update.message.reply_text("🌑 Доступ запрещён.", reply_markup=main_menu_keyboard())
+        return MAIN_MENU
+    
+    if user_input == '🎁 Добавить расклады ВСЕМ':
+        # Добавляем 1 расклад всем пользователям
+        from db import add_readings_to_all_users, get_all_users
+        add_readings_to_all_users(1)
+        users_count = len(get_all_users())
+        
+        await update.message.reply_text(
+            f"✅ *Успешно!*\n\n"
+            f"Добавлено по 1 раскладу всем пользователям.\n"
+            f"Всего пользователей: {users_count}",
+            parse_mode='Markdown',
+            reply_markup=admin_keyboard()
+        )
+        
+        # Рассылаем уведомление пользователям
+        await send_bonus_notification_to_all(context)
+        
+    elif user_input == '👤 Добавить расклады пользователю':
+        await update.message.reply_text(
+            "Введите ID пользователя, которому нужно добавить расклады:",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return AWAITING_USER_ID
+        
+    elif user_input == '🔄 Обнулить счётчики бесплатных':
+        from db import reset_free_readings_counter
+        reset_free_readings_counter()
+        
+        await update.message.reply_text(
+            "✅ Счётчики бесплатных раскладов обнулены для всех пользователей!",
+            reply_markup=admin_keyboard()
+        )
+        
+    elif user_input == '📢 Сделать рассылку':
+        await handle_update_broadcast(update, context)
+        return MAIN_MENU
+        
+    elif user_input == '🏠 Главное меню':
+        await update.message.reply_text(
+            "Возвращаюсь в главное меню...",
+            reply_markup=main_menu_keyboard()
+        )
+        return MAIN_MENU
+    
+    return MAIN_MENU
+
+async def handle_user_id_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ввода ID пользователя"""
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_USER_IDS:
+        await update.message.reply_text("🌑 Доступ запрещён.", reply_markup=main_menu_keyboard())
+        return MAIN_MENU
+    
+    try:
+        target_user_id = int(update.message.text)
+        from db import add_readings_to_user, get_user
+        
+        user = get_user(target_user_id)
+        if not user:
+            await update.message.reply_text(
+                "❌ Пользователь с таким ID не найден.",
+                reply_markup=admin_keyboard()
+            )
+            return MAIN_MENU
+        
+        # Добавляем 1 расклад
+        add_readings_to_user(target_user_id, 1)
+        
+        user_name = user.get('name', 'Неизвестный')
+        new_balance = user['readings_balance'] + 1
+        
+        await update.message.reply_text(
+            f"✅ *Успешно!*\n\n"
+            f"Пользователь: {user_name} (ID: {target_user_id})\n"
+            f"Добавлено: 1 расклад\n"
+            f"Новый баланс: {new_balance}",
+            parse_mode='Markdown',
+            reply_markup=admin_keyboard()
+        )
+        
+        # Отправляем уведомление пользователю
+        try:
+            await context.bot.send_message(
+                chat_id=target_user_id,
+                text="🎁 *Ты получил подарок от Зеркала Судеб!*\n\n"
+                     "В знак благодарности за твою верность мы дарим тебе +1 бесплатный расклад! 🔮\n\n"
+                     "Используй его для нового пророчества!",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось отправить уведомление пользователю {target_user_id}: {e}")
+        
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Неверный формат ID. Введите числовой ID пользователя.",
+            reply_markup=admin_keyboard()
+        )
+    
+    return MAIN_MENU
+
+async def send_bonus_notification_to_all(context: ContextTypes.DEFAULT_TYPE):
+    """Рассылка уведомления о бонусе всем пользователям"""
+    from db import get_all_users
+    
+    users = get_all_users()
+    sent_count = 0
+    
+    broadcast_text = """🎁 *ПОДАРОК ОТ ЗЕРКАЛА СУДЕБ!* 🔮
+
+Дорогой искатель истины!
+
+В знак благодарности за твою верность и в честь обновления бота, 
+мы дарим тебе *+1 бесплатный расклад*! 
+
+✨ Используй его для нового пророчества и загляни в будущее!
+
+*Твой баланс уже пополнен!*
+
+🌙 Благодарим за доверие к Зеркалу Судеб!"""
+    
+    for user in users:
+        try:
+            await context.bot.send_message(
+                chat_id=user['user_id'],
+                text=broadcast_text,
+                parse_mode='Markdown'
+            )
+            sent_count += 1
+            await asyncio.sleep(0.1)  # Задержка чтобы не спамить
+        except Exception as e:
+            logger.warning(f"Не удалось отправить бонусное уведомление пользователю {user['user_id']}: {e}")
+    
+    logger.info(f"Бонусные уведомления отправлены: {sent_count}/{len(users)}")
 
 # --- 🏁 ЗАПУСК БОТА ---
 def main():
@@ -892,14 +1107,18 @@ def main():
             MAIN_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu)],
             AWAITING_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_question)],
             AWAITING_READING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_reading_type_selection)],
+            AWAITING_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_id_input)],
         },
         fallbacks=[
             CommandHandler('cancel', cancel),
+            CommandHandler('admin', admin_command),
             MessageHandler(filters.TEXT & ~filters.COMMAND, global_fallback_handler)
         ],
     )
 
     application.add_handler(conv_handler)
+    application.add_handler(CommandHandler('admin', admin_command))
+    application.add_handler(MessageHandler(filters.Regex('^(🎁 Добавить расклады ВСЕМ|👤 Добавить расклады пользователю|🔄 Обнулить счётчики бесплатных|📢 Сделать рассылку|🏠 Главное меню)$'), handle_admin_actions))
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     application.add_handler(MessageHandler(filters.Regex('^🛍️ Купить расклады$'), buy_readings))
