@@ -646,20 +646,6 @@ async def card_of_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
             name=f"feedback_{user_id}_{today}"
         )
 
-    await msg.edit_text(
-        TEXTS['card_of_day'].format(name=user_name, message=message), 
-        parse_mode='Markdown'
-    )
-    update_daily_card(user_id, message)
-
-    if context.job_queue:
-        context.job_queue.run_once(
-            send_feedback_request,
-            when=86400,
-            data={"user_id": user_id, "card_text": message},
-            name=f"feedback_{user_id}_{today}"
-        )
-
 async def invite_friend(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
         user_id = update.message.from_user.id
