@@ -902,32 +902,6 @@ async def show_full_reading(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Ошибка при показе полного расклада: {e}")
         await query.message.reply_text("🌑 Не удалось показать расклад. Попробуй снова.", reply_markup=main_menu_keyboard())
 
-async def show_full_reading(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    try:
-        index = int(query.data.split('_')[-1])
-        readings = context.user_data.get('full_readings', [])
-        if index < 0 or index >= len(readings):
-            raise ValueError("Неверный индекс")
-
-        reading = readings[index]
-        full_text = reading['text']
-
-        await query.message.reply_text(
-            f"✨ *✨✨✨ ПОЛНЫЙ РАСКЛАД ✨✨✨*\n"
-            f"🔮 *Тема:* {reading['type']}\n"
-            f"📅 *Дата:* {reading['date'][:16]}\n\n"
-            f"{full_text}",
-            parse_mode='Markdown',
-            reply_markup=main_menu_keyboard()
-        )
-
-    except Exception as e:
-        logger.error(f"Ошибка при показе полного расклада: {e}")
-        await query.message.reply_text("🌑 Не удалось показать расклад. Попробуй снова.", reply_markup=main_menu_keyboard())
-
 # --- 🚨 ОБРАБОТЧИКИ ОБНОВЛЕНИЯ И ФОЛБЭКИ ---
 async def global_fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None:
@@ -1300,17 +1274,24 @@ async def handle_messages_history(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("❌ Доступ запрещён")
         return
     
-    conn = get_db_connection()
-    with conn.cursor() as cur:
-        cur.execute("""
-            SELECT um.*, u.name as full_user_name 
-            FROM user_messages um
-            LEFT JOIN users u ON um.user_id = u.user_id
-            ORDER BY um.created_at DESC
-            LIMIT 20
-        """)
-        all_messages = cur.fetchall()
-    conn.close()
+    # 🔥 ИСПРАВЛЕНО: используем функцию из db.py
+    try:
+        from db import get_db_connection
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT um.*, u.name as full_user_name 
+                FROM user_messages um
+                LEFT JOIN users u ON um.user_id = u.user_id
+                ORDER BY um.created_at DESC
+                LIMIT 20
+            """)
+            all_messages = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Ошибка при получении истории сообщений: {e}")
+        await update.message.reply_text("❌ Ошибка при загрузке истории")
+        return
     
     if not all_messages:
         await update.message.reply_text("📭 Нет сообщений в истории")
@@ -1329,9 +1310,16 @@ async def handle_messages_history(update: Update, context: ContextTypes.DEFAULT_
         user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
         status_emoji = "🆕" if msg['status'] == 'new' else "✅"
         
+        # Форматируем дату
+        created_at = msg['created_at']
+        if hasattr(created_at, 'strftime'):
+            created_at_str = created_at.strftime('%d.%m %H:%M')
+        else:
+            created_at_str = str(created_at)
+        
         text += f"{status_emoji} *{user_name}* (ID: `{msg['user_id']}`)\n"
         text += f"💬 {msg['message_text'][:80]}...\n"
-        text += f"⏰ {msg['created_at'].strftime('%d.%m %H:%M')}\n"
+        text += f"⏰ {created_at_str}\n"
         
         if msg['status'] == 'replied' and msg['admin_reply']:
             text += f"📨 Ответ: {msg['admin_reply'][:50]}...\n"
@@ -1560,7 +1548,6 @@ async def handle_show_all_messages(update: Update, context: ContextTypes.DEFAULT
         parse_mode='Markdown',
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-
 async def handle_show_full_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать полную историю всех сообщений с пагинацией"""
     query = update.callback_query
@@ -1570,18 +1557,25 @@ async def handle_show_full_history(update: Update, context: ContextTypes.DEFAULT
     if user_id not in ADMIN_USER_IDS:
         return
     
-    # Получаем все сообщения из базы данных
-    conn = get_db_connection()
-    with conn.cursor() as cur:
-        cur.execute("""
-            SELECT um.*, u.name as full_user_name 
-            FROM user_messages um
-            LEFT JOIN users u ON um.user_id = u.user_id
-            ORDER BY um.created_at DESC
-            LIMIT 50
-        """)
-        all_messages = cur.fetchall()
-    conn.close()
+    # 🔥 ИСПРАВЛЕНО: используем функцию из db.py вместо прямого SQL
+    try:
+        # Получаем все сообщения через функцию из db.py
+        from db import get_db_connection
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT um.*, u.name as full_user_name 
+                FROM user_messages um
+                LEFT JOIN users u ON um.user_id = u.user_id
+                ORDER BY um.created_at DESC
+                LIMIT 50
+            """)
+            all_messages = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Ошибка при получении сообщений: {e}")
+        await query.message.reply_text("❌ Ошибка при загрузке истории сообщений")
+        return
     
     if not all_messages:
         await query.edit_message_text(
@@ -1606,10 +1600,16 @@ async def handle_show_full_history(update: Update, context: ContextTypes.DEFAULT
     for i, msg in enumerate(all_messages[:10]):
         user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
         status_emoji = "🆕" if msg['status'] == 'new' else "✅"
-        created_at = msg['created_at'].strftime('%d.%m.%Y %H:%M') if hasattr(msg['created_at'], 'strftime') else str(msg['created_at'])
+        
+        # Форматируем дату
+        created_at = msg['created_at']
+        if hasattr(created_at, 'strftime'):
+            created_at_str = created_at.strftime('%d.%m.%Y %H:%M')
+        else:
+            created_at_str = str(created_at)
         
         text += f"{status_emoji} *{i+1}. {user_name}* (ID: `{msg['user_id']}`)\n"
-        text += f"📅 *Когда:* {created_at}\n"
+        text += f"📅 *Когда:* {created_at_str}\n"
         
         # Обрезаем длинный текст сообщения
         message_preview = msg['message_text']
@@ -1634,8 +1634,7 @@ async def handle_show_full_history(update: Update, context: ContextTypes.DEFAULT
     keyboard = []
     
     # Кнопки для быстрого ответа на новые сообщения
-    new_for_quick_reply = [msg for msg in new_messages[:3]]
-    if new_for_quick_reply:
+    if new_messages:
         keyboard.append([InlineKeyboardButton("🚀 Быстрые ответы на новые", callback_data="show_all_messages")])
     
     # Основные кнопки навигации
@@ -1679,6 +1678,14 @@ async def handle_admin_back_to_menu(update: Update, context: ContextTypes.DEFAUL
         reply_markup=admin_keyboard()
     )
 
+async def handle_get_by_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка кнопки получения расклада за приглашение"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Просто вызываем функцию приглашения друга
+    await invite_friend(update, context)
+
 # --- 🏁 ЗАПУСК БОТА ---
 def main():
     init_db()
@@ -1719,10 +1726,11 @@ def main():
     application.add_handler(CallbackQueryHandler(menu_invite_friend, pattern="^menu_invite_friend$"))
     application.add_handler(CallbackQueryHandler(handle_quick_reply_button, pattern="^quick_reply_"))
     application.add_handler(CallbackQueryHandler(handle_show_all_messages, pattern="^show_all_messages$"))
-    application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
     application.add_handler(CallbackQueryHandler(handle_show_all_messages, pattern="^show_new_messages$"))
     application.add_handler(CallbackQueryHandler(handle_messages_history, pattern="^show_full_history$"))
     application.add_handler(CallbackQueryHandler(handle_admin_back_to_menu, pattern="^admin_back_to_menu$"))
+    application.add_handler(CallbackQueryHandler(handle_get_by_referral, pattern="^get_by_referral$"))
+    application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
     application.add_handler(CommandHandler("history", handle_messages_history))
 
     # Запускаем бота
