@@ -321,11 +321,15 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     update_user_last_active(user_id)
 
+    if user_id in ADMIN_USER_IDS and context.user_data.get('admin_reply_mode'):
+        return await handle_admin_reply_input(update, context)
+
     admin_buttons = [
         '🎁 Добавить расклады ВСЕМ',
         '👤 Добавить расклады пользователю', 
         '🔄 Обнулить счётчики бесплатных',
         '📢 Сделать рассылку',
+        '📨 Просмотреть сообщения',
         '🏠 Главное меню'
     ]
     
@@ -1040,20 +1044,16 @@ async def handle_admin_actions(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=admin_keyboard()
         )
         
-        # Рассылаем уведомление пользователям
-        await send_bonus_notification_to_all(context)
-        
     elif user_input == '👤 Добавить расклады пользователю':
         await update.message.reply_text(
             "Введите ID пользователя, которому нужно добавить расклады:",
             reply_markup=ReplyKeyboardRemove()
         )
+        # 🔥 ВОЗВРАЩАЕМ состояние для ожидания ID пользователя
         return AWAITING_USER_ID
         
     elif user_input == '🔄 Обнулить счётчики бесплатных':
-        from db import reset_free_readings_counter
         reset_free_readings_counter()
-        
         await update.message.reply_text(
             "✅ Счётчики бесплатных раскладов обнулены для всех пользователей!",
             reply_markup=admin_keyboard()
@@ -1061,18 +1061,17 @@ async def handle_admin_actions(update: Update, context: ContextTypes.DEFAULT_TYP
         
     elif user_input == '📢 Сделать рассылку':
         await handle_update_broadcast(update, context)
-        return MAIN_MENU
+        
+    elif user_input == '📨 Просмотреть сообщения':
+        await handle_messages_list(update, context)
         
     elif user_input == '🏠 Главное меню':
         await update.message.reply_text(
             "Возвращаюсь в главное меню...",
             reply_markup=main_menu_keyboard()
         )
-        return MAIN_MENU
-    elif user_input == '📨 Просмотреть сообщения':
-        await handle_messages_list(update, context)
-        return MAIN_MENU
     
+    # 🔥 ВСЕГДА возвращаем MAIN_MENU, кроме случаев когда нужно другое состояние
     return MAIN_MENU
 
 async def handle_user_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1151,9 +1150,8 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
         )
         return MAIN_MENU
     
-    # 🔥 ДОБАВЛЕНО: получаем текст ответа
-    reply_text = update.message.text  # <-- ЭТО СТРОКА ОТСУТСТВОВАЛА
-    
+    # Получаем текст ответа
+    reply_text = update.message.text
     target_user_id = context.user_data.get('reply_to_user')
     original_message_text = context.user_data.get('original_message_text', 'Неизвестное сообщение')
     original_message_id = context.user_data.get('original_message_id')
@@ -1167,7 +1165,7 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
         return MAIN_MENU
     
     try:
-        # Форматируем ответ в нужном формате
+        # Форматируем ответ
         formatted_reply = f"""💌 *Ответ от разработчика*
 
 *Ваш вопрос:*
@@ -1191,24 +1189,15 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
         target_user_name = target_user.get('name', 'Неизвестный')
         save_user_message(user_id, "Admin", f"Ответ для {target_user_name}: {reply_text}", "admin_reply")
         
-        # 🔥 ПОМЕЧАЕМ ИСХОДНОЕ СООБЩЕНИЕ КАК ОТВЕЧЕННОЕ
+        # Помечаем исходное сообщение как отвеченное
         if original_message_id:
             update_message_status(original_message_id, 'replied', reply_text)
-            logger.info(f"✅ Сообщение {original_message_id} помечено как отвеченное")
         
-        # 🔥 ДОБАВЛЕНО: автоматически обновляем список сообщений
-        messages = get_unread_messages()
-        if messages:
-            # Показываем обновленный список
-            await handle_show_all_messages_custom(update, context, messages)
-        else:
-            # Если сообщений больше нет, показываем пустой список
-            await update.message.reply_text(
-                "📭 *Все сообщения отвечены!* 🎉\n\n"
-                "Новых непрочитанных сообщений нет.",
-                parse_mode='Markdown',
-                reply_markup=admin_keyboard()
-            )
+        await update.message.reply_text(
+            "✅ *Ответ успешно отправлен пользователю!*",
+            parse_mode='Markdown',
+            reply_markup=admin_keyboard()  # 🔥 Возвращаем админ-клавиатуру
+        )
         
     except Exception as e:
         logger.error(f"Ошибка отправки ответа пользователю {target_user_id}: {e}")
@@ -1217,7 +1206,7 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
             reply_markup=main_menu_keyboard()
         )
     
-    # Всегда сбрасываем данные
+    # Сбрасываем данные
     context.user_data.clear()
     return MAIN_MENU
 
@@ -1493,12 +1482,12 @@ async def handle_quick_reply_button(update: Update, context: ContextTypes.DEFAUL
         await query.message.reply_text("❌ Доступ запрещён")
         return
     
-    # Извлекаем ID пользователя и сообщения из callback_data: "quick_reply_123456_789"
+    # Извлекаем ID пользователя и сообщения
     parts = query.data.replace('quick_reply_', '').split('_')
     target_user_id = int(parts[0])
     original_message_id = int(parts[1]) if len(parts) > 1 else None
     
-    # Очищаем и устанавливаем данные
+    # Устанавливаем режим ответа
     context.user_data.clear()
     context.user_data['admin_reply_mode'] = True
     context.user_data['reply_to_user'] = target_user_id
@@ -1508,7 +1497,7 @@ async def handle_quick_reply_button(update: Update, context: ContextTypes.DEFAUL
     target_user = get_user(target_user_id)
     target_user_name = target_user.get('name', 'Неизвестный')
     
-    # Получаем оригинальное сообщение из БД
+    # Получаем оригинальное сообщение
     original_message_text = "Не удалось загрузить оригинальное сообщение"
     if original_message_id:
         user_messages = get_user_messages(target_user_id)
@@ -1530,9 +1519,10 @@ async def handle_quick_reply_button(update: Update, context: ContextTypes.DEFAUL
         f"👇 *Введите ваш ответ ниже:*\n\n"
         f"ℹ️ Для отмены нажмите кнопку '❌ Отменить ответ'",
         parse_mode='Markdown',
-        reply_markup=cancel_keyboard  # Используем клавиатуру с кнопкой отмены
+        reply_markup=cancel_keyboard
     )
     
+    # 🔥 ВОЗВРАЩАЕМ состояние для ожидания ответа админа
     return AWAITING_ADMIN_REPLY
 
 async def handle_admin_reply_direct(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1756,10 +1746,6 @@ def main():
     )
 
     application.add_handler(conv_handler)
-    application.add_handler(MessageHandler(
-        filters.TEXT & filters.User(ADMIN_USER_IDS), 
-        handle_admin_reply_direct
-    ))
     application.add_handler(CommandHandler('admin', admin_command))
     application.add_handler(CommandHandler("messages", handle_messages_list))
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
