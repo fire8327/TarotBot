@@ -1313,6 +1313,9 @@ async def handle_quick_reply_button(update: Update, context: ContextTypes.DEFAUL
     target_user_id = int(parts[0])
     original_message_id = int(parts[1]) if len(parts) > 1 else None
     
+    # Очищаем и устанавливаем данные
+    context.user_data.clear()
+    context.user_data['admin_reply_mode'] = True  # 🔥 ДОБАВЬТЕ ЭТОТ ФЛАГ
     context.user_data['reply_to_user'] = target_user_id
     context.user_data['original_message_id'] = original_message_id
     
@@ -1329,15 +1332,17 @@ async def handle_quick_reply_button(update: Update, context: ContextTypes.DEFAUL
                 original_message_text = msg['message_text']
                 break
     
-    # Сохраняем оригинальное сообщение для контекста
     context.user_data['original_message_text'] = original_message_text
     
     await query.message.reply_text(
-        f"💌 *Ответ пользователю:* {target_user_name} (ID: {target_user_id})\n\n"
+        f"💌 *РЕЖИМ ОТВЕТА АДМИНА*\n\n"
+        f"👤 *Пользователь:* {target_user_name}\n"
+        f"🆔 *ID:* {target_user_id}\n\n"
         f"*Оригинальное сообщение:*\n{original_message_text}\n\n"
-        f"👇 *Введите ваш ответ ниже:*\n(или нажмите '❌ Отменить')",
+        f"👇 *Введите ваш ответ ниже:*\n\n"
+        f"ℹ️ Для отмены нажмите /cancel",
         parse_mode='Markdown',
-        reply_markup=ReplyKeyboardMarkup([['❌ Отменить ответ']], resize_keyboard=True)
+        reply_markup=ReplyKeyboardRemove()
     )
     
     return AWAITING_ADMIN_REPLY
@@ -1345,8 +1350,13 @@ async def handle_quick_reply_button(update: Update, context: ContextTypes.DEFAUL
 async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ввода ответа от админа"""
     user_id = update.effective_user.id
-    if user_id not in ADMIN_USER_IDS:
-        await update.message.reply_text("❌ Доступ запрещён")
+    
+    # Проверяем, что это админ и он в режиме ответа
+    if user_id not in ADMIN_USER_IDS or not context.user_data.get('admin_reply_mode'):
+        await update.message.reply_text(
+            "🌑 Я не понял твой знак... Выбери путь из меню.",
+            reply_markup=main_menu_keyboard()
+        )
         return MAIN_MENU
     
     reply_text = update.message.text
@@ -1354,15 +1364,20 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
     if reply_text == '❌ Отменить ответ':
         await update.message.reply_text(
             "Ответ отменён",
-            reply_markup=ReplyKeyboardRemove()
+            reply_markup=main_menu_keyboard()
         )
+        context.user_data.clear()
         return MAIN_MENU
     
     target_user_id = context.user_data.get('reply_to_user')
     original_message_text = context.user_data.get('original_message_text', 'Неизвестное сообщение')
     
     if not target_user_id:
-        await update.message.reply_text("❌ Ошибка: не найден пользователь для ответа")
+        await update.message.reply_text(
+            "❌ Ошибка: не найден пользователь для ответа",
+            reply_markup=main_menu_keyboard()
+        )
+        context.user_data.clear()
         return MAIN_MENU
     
     try:
@@ -1396,14 +1411,10 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
             update_message_status(original_message_id, 'replied', reply_text)
         
         await update.message.reply_text(
-            f"✅ Ответ отправлен пользователю {target_user_name}!",
+            f"✅ *Ответ отправлен пользователю {target_user_name}!*",
+            parse_mode='Markdown',
             reply_markup=main_menu_keyboard()
         )
-        
-        # Очищаем временные данные
-        context.user_data.pop('reply_to_user', None)
-        context.user_data.pop('original_message_id', None)
-        context.user_data.pop('original_message_text', None)
         
     except Exception as e:
         logger.error(f"Ошибка отправки ответа пользователю {target_user_id}: {e}")
@@ -1412,7 +1423,21 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
             reply_markup=main_menu_keyboard()
         )
     
+    # Всегда сбрасываем данные
+    context.user_data.clear()
     return MAIN_MENU
+
+async def handle_admin_reply_direct(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Прямой обработчик ответов админа (вне ConversationHandler)"""
+    user_id = update.effective_user.id
+    
+    # Проверяем, что админ в режиме ответа
+    if user_id not in ADMIN_USER_IDS or not context.user_data.get('reply_to_user'):
+        # Если не в режиме ответа, пропускаем чтобы обработалось в ConversationHandler
+        return
+    
+    # Если в режиме ответа, обрабатываем здесь
+    return await handle_admin_reply_input(update, context)
 
 async def handle_show_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать все сообщения с пагинацией"""
@@ -1475,9 +1500,14 @@ def main():
             CommandHandler('admin', admin_command),
             MessageHandler(filters.TEXT & ~filters.COMMAND, global_fallback_handler)
         ],
+        allow_reentry=True
     )
 
     application.add_handler(conv_handler)
+    application.add_handler(MessageHandler(
+        filters.TEXT & filters.User(ADMIN_USER_IDS), 
+        handle_admin_reply_direct
+    ))
     application.add_handler(CommandHandler('admin', admin_command))
     application.add_handler(CommandHandler("messages", handle_messages_list))
     application.add_handler(MessageHandler(filters.Regex(r'^/reply_\d+'), handle_admin_reply))
