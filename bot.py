@@ -1562,7 +1562,10 @@ def main():
     ))
     application.add_handler(CommandHandler('admin', admin_command))
     application.add_handler(CommandHandler("messages", handle_messages_list))
-    application.add_handler(MessageHandler(filters.Regex(r'^/reply_\d+'), handle_admin_reply))
+    application.add_handler(MessageHandler(
+        filters.TEXT & filters.User(ADMIN_USER_IDS), 
+        handle_admin_reply_direct
+    ))
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     application.add_handler(MessageHandler(filters.Regex('^🛍️ Купить расклады$'), buy_readings))
