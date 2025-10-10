@@ -210,7 +210,7 @@ def admin_keyboard():
         ['🎁 Добавить расклады ВСЕМ'],
         ['👤 Добавить расклады пользователю'],
         ['🔄 Обнулить счётчики бесплатных'],
-        ['📢 Сделать рассылку'],
+        ['📢 Сделать рассылку'], ['📨 Просмотреть сообщения'],
         ['🏠 Главное меню']
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -861,6 +861,7 @@ async def show_reading_history(update: Update, context: ContextTypes.DEFAULT_TYP
         if len(lines) > 2:
             preview += "..."
         history_text += f"{preview}\n\n"
+        # 🔥 ИСПРАВЛЕНО: используем индекс от 0, а не от 1
         callback_data = f"full_reading_{i-1}"
         keyboard.append([InlineKeyboardButton(f"📖 Показать полностью #{i}", callback_data=callback_data)])
 
@@ -868,8 +869,38 @@ async def show_reading_history(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
 
     await update.message.reply_text(history_text, parse_mode='Markdown', reply_markup=reply_markup)
-    context.user_data['full_readings'] = sorted_readings[:5]
+    # 🔥 ИСПРАВЛЕНО: сохраняем все отсортированные расклады
+    context.user_data['full_readings'] = sorted_readings
     return MAIN_MENU
+
+async def show_full_reading(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        index = int(query.data.split('_')[-1])
+        readings = context.user_data.get('full_readings', [])
+        
+        # 🔥 ДОБАВЛЕНО: проверка на существование индекса
+        if index < 0 or index >= len(readings):
+            await query.message.reply_text("❌ Расклад не найден.", reply_markup=main_menu_keyboard())
+            return
+
+        reading = readings[index]
+        full_text = reading['text']
+
+        await query.message.reply_text(
+            f"✨ *✨✨✨ ПОЛНЫЙ РАСКЛАД ✨✨✨*\n"
+            f"🔮 *Тема:* {reading['type']}\n"
+            f"📅 *Дата:* {reading['date'][:16]}\n\n"
+            f"{full_text}",
+            parse_mode='Markdown',
+            reply_markup=main_menu_keyboard()
+        )
+
+    except Exception as e:
+        logger.error(f"Ошибка при показе полного расклада: {e}")
+        await query.message.reply_text("🌑 Не удалось показать расклад. Попробуй снова.", reply_markup=main_menu_keyboard())
 
 async def show_full_reading(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1064,6 +1095,9 @@ async def handle_admin_actions(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=main_menu_keyboard()
         )
         return MAIN_MENU
+    elif user_input == '📨 Просмотреть сообщения':
+        await handle_messages_list(update, context)
+        return MAIN_MENU
     
     return MAIN_MENU
 
@@ -1079,9 +1113,6 @@ async def handle_user_feedback(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=main_menu_keyboard()
         )
         return MAIN_MENU
-    
-    # Сохраняем сообщение в БД
-    save_user_message(user_id, user_name, message_text, 'feedback')
     
     await update.message.reply_text(
         "✅ *Сообщение отправлено!*\n\n"
