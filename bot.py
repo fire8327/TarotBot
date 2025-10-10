@@ -47,7 +47,7 @@ PACKAGES = {
 }
 
 # --- Состояния диалога ---
-GET_NAME, MAIN_MENU, CONFIRM_READING, AWAITING_QUESTION, AWAITING_READING_TYPE, AWAITING_USER_ID = range(6)
+GET_NAME, MAIN_MENU, CONFIRM_READING, AWAITING_QUESTION, AWAITING_READING_TYPE, AWAITING_USER_ID, AWAITING_FEEDBACK, ADMIN_REPLY = range(8)
 
 # --- 📝 ТЕКСТОВЫЕ СООБЩЕНИЯ ---
 TEXTS = {
@@ -137,7 +137,8 @@ from db import (
     save_purchase, save_reading, update_daily_card, increment_referral_count,
     update_user_last_active, increment_free_readings_used, update_conversion_step,
     update_user_last_update_notified, get_active_users, 
-    get_all_users, add_readings_to_user, add_readings_to_all_users, reset_free_readings_counter  # 🔥 ДОБАВИТЬ ЭТИ
+    get_all_users, add_readings_to_user, add_readings_to_all_users, reset_free_readings_counter,
+    save_user_message, get_unread_messages, get_user_messages, update_message_status
 )
 
 # --- 🎴 Списки карт ---
@@ -181,7 +182,8 @@ def main_menu_keyboard():
     keyboard = [
         ['🔮 Сделать расклад'],
         ['⭐ Мой профиль', '🃏 Карта дня'],
-        ['📜 О боте', '🤝 Пригласить друга']
+        ['📞 Обратная связь', '🤝 Пригласить друга'],
+        ['📜 О боте']
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -360,6 +362,19 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_menu_keyboard()
         )
         return MAIN_MENU
+    elif user_input == '📞 Обратная связь':
+        await update.message.reply_text(
+            "📝 *Напиши своё сообщение*\n\n"
+            "Здесь ты можешь:\n"
+            "• Задать вопрос по работе бота\n"
+            "• Сообщить об ошибке\n"
+            "• Предложить улучшение\n"
+            "• Написать отзыв\n\n"
+            "Просто напиши своё сообщение, и я передам его разработчику!",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([['❌ Отменить']], resize_keyboard=True)
+        )
+        return AWAITING_FEEDBACK
     else:
         await update.message.reply_text(
             TEXTS['unknown_command'],
@@ -1051,6 +1066,112 @@ async def handle_admin_actions(update: Update, context: ContextTypes.DEFAULT_TYP
     
     return MAIN_MENU
 
+async def handle_user_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    user = get_user(user_id)
+    user_name = user['name'] if user['name'] else "Без имени"
+    message_text = update.message.text
+    
+    if message_text == '❌ Отменить':
+        await update.message.reply_text(
+            "Сообщение отменено",
+            reply_markup=main_menu_keyboard()
+        )
+        return MAIN_MENU
+    
+    # Сохраняем сообщение в БД
+    save_user_message(user_id, user_name, message_text, 'feedback')
+    
+    await update.message.reply_text(
+        "✅ *Сообщение отправлено!*\n\n"
+        "Разработчик получит твоё сообщение и ответит в ближайшее время.\n"
+        "Ответ придёт тебе прямо сюда, в бота.",
+        parse_mode='Markdown',
+        reply_markup=main_menu_keyboard()
+    )
+    
+    # Уведомляем админа о новом сообщении
+    await notify_admin_about_new_message(context, user_id, user_name, message_text)
+    
+    return MAIN_MENU
+
+async def notify_admin_about_new_message(context: ContextTypes.DEFAULT_TYPE, user_id: int, user_name: str, message: str):
+    """Уведомление админа о новом сообщении"""
+    for admin_id in ADMIN_USER_IDS:
+        try:
+            await context.bot.send_message(
+                chat_id=admin_id,
+                text=f"📨 *НОВОЕ СООБЩЕНИЕ ОТ ПОЛЬЗОВАТЕЛЯ*\n\n"
+                     f"👤 Пользователь: {user_name} (ID: {user_id})\n"
+                     f"💬 Сообщение: {message}\n\n"
+                     f"Для ответа используйте команду /reply_{user_id}",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.error(f"Не удалось уведомить админа {admin_id}: {e}")
+
+async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /reply для админов"""
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_USER_IDS:
+        await update.message.reply_text("❌ Доступ запрещён")
+        return
+    
+    # Парсим команду: /reply_123456 Текст ответа
+    command_parts = update.message.text.split(' ', 1)
+    if len(command_parts) < 2:
+        await update.message.reply_text("❌ Формат: /reply_USER_ID Текст ответа")
+        return
+    
+    target_user_id = command_parts[0].replace('/reply_', '')
+    reply_text = command_parts[1] if len(command_parts) > 1 else ""
+    
+    try:
+        target_user_id = int(target_user_id)
+        
+        # Отправляем ответ пользователю
+        await context.bot.send_message(
+            chat_id=target_user_id,
+            text=f"💌 *Ответ от разработчика:*\n\n{reply_text}",
+            parse_mode='Markdown'
+        )
+        
+        # Сохраняем в историю
+        save_user_message(user_id, "Admin", f"Ответ пользователю {target_user_id}: {reply_text}", "admin_reply")
+        
+        await update.message.reply_text("✅ Ответ отправлен пользователю")
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный ID пользователя")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка отправки: {e}")
+
+# Добавьте команду для просмотра сообщений
+async def handle_messages_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать непрочитанные сообщения"""
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_USER_IDS:
+        await update.message.reply_text("❌ Доступ запрещён")
+        return
+    
+    messages = get_unread_messages()
+    
+    if not messages:
+        await update.message.reply_text("📭 Нет новых сообщений")
+        return
+    
+    text = "📨 *Непрочитанные сообщения:*\n\n"
+    for msg in messages[:10]:
+        user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
+        text += f"👤 {user_name} (ID: {msg['user_id']})\n"
+        text += f"💬 {msg['message_text'][:100]}...\n"
+        text += f"⏰ {msg['created_at'].strftime('%d.%m %H:%M')}\n"
+        text += f"📎 Ответить: /reply_{msg['user_id']} ваш_текст\n\n"
+    
+    await update.message.reply_text(text, parse_mode='Markdown')
+
 async def handle_user_id_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ввода ID пользователя"""
     user_id = update.effective_user.id
@@ -1153,6 +1274,7 @@ def main():
             AWAITING_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_question)],
             AWAITING_READING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_reading_type_selection)],
             AWAITING_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_id_input)],
+            AWAITING_FEEDBACK: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_feedback)],
         },
         fallbacks=[
             CommandHandler('cancel', cancel),
@@ -1163,6 +1285,8 @@ def main():
 
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler('admin', admin_command))
+    application.add_handler(CommandHandler("messages", handle_messages_list))
+    application.add_handler(MessageHandler(filters.Regex(r'^/reply_\d+'), handle_admin_reply))
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     application.add_handler(MessageHandler(filters.Regex('^🛍️ Купить расклады$'), buy_readings))

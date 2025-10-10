@@ -47,6 +47,18 @@ def init_db():
                 reading_text TEXT,
                 reading_date TIMESTAMP DEFAULT NOW()
             );
+
+             CREATE TABLE IF NOT EXISTS user_messages (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT REFERENCES users(user_id),
+                user_name TEXT,
+                message_text TEXT NOT NULL,
+                message_type TEXT DEFAULT 'feedback',
+                status TEXT DEFAULT 'new',
+                admin_reply TEXT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                replied_at TIMESTAMP
+            );
         """)
         conn.commit()
     conn.close()
@@ -227,4 +239,59 @@ def reset_free_readings_counter():
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET free_readings_used = 0")
     conn.commit()
+    conn.close()
+
+def save_user_message(user_id, user_name, message_text, message_type='feedback'):
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO user_messages (user_id, user_name, message_text, message_type, status)
+            VALUES (%s, %s, %s, %s, 'new')
+        """, (user_id, user_name, message_text, message_type))
+        conn.commit()
+    conn.close()
+
+def get_unread_messages():
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT um.*, u.name as full_user_name 
+            FROM user_messages um
+            LEFT JOIN users u ON um.user_id = u.user_id
+            WHERE um.status = 'new'
+            ORDER BY um.created_at ASC
+        """)
+        messages = cur.fetchall()
+    conn.close()
+    return messages
+
+def get_user_messages(user_id):
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT * FROM user_messages 
+            WHERE user_id = %s 
+            ORDER BY created_at DESC 
+            LIMIT 10
+        """, (user_id,))
+        messages = cur.fetchall()
+    conn.close()
+    return messages
+
+def update_message_status(message_id, status, admin_reply=None):
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        if admin_reply:
+            cur.execute("""
+                UPDATE user_messages 
+                SET status = %s, admin_reply = %s, replied_at = NOW()
+                WHERE id = %s
+            """, (status, admin_reply, message_id))
+        else:
+            cur.execute("""
+                UPDATE user_messages 
+                SET status = %s 
+                WHERE id = %s
+            """, (status, message_id))
+        conn.commit()
     conn.close()
