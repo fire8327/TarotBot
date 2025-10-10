@@ -1134,23 +1134,21 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
     """Обработка ввода ответа от админа"""
     user_id = update.effective_user.id
     
+    # Проверяем нажатие кнопки отмены
+    if update.message.text == '❌ Отменить ответ':
+        await update.message.reply_text(
+            "❌ Ответ отменён. Возвращаюсь в главное меню.",
+            reply_markup=main_menu_keyboard()
+        )
+        context.user_data.clear()
+        return MAIN_MENU
+    
     # Проверяем, что это админ и он в режиме ответа
     if user_id not in ADMIN_USER_IDS or not context.user_data.get('admin_reply_mode'):
         await update.message.reply_text(
             "🌑 Я не понял твой знак... Выбери путь из меню.",
             reply_markup=main_menu_keyboard()
         )
-        return MAIN_MENU
-    
-    reply_text = update.message.text
-    
-    # Проверяем нажатие кнопки отмены
-    if reply_text == '❌ Отменить ответ':
-        await update.message.reply_text(
-            "❌ Ответ отменён. Возвращаюсь в главное меню.",
-            reply_markup=main_menu_keyboard()
-        )
-        context.user_data.clear()
         return MAIN_MENU
     
     target_user_id = context.user_data.get('reply_to_user')
@@ -1540,19 +1538,11 @@ async def handle_admin_reply_direct(update: Update, context: ContextTypes.DEFAUL
     
     # Проверяем, что админ в режиме ответа
     if user_id not in ADMIN_USER_IDS or not context.user_data.get('admin_reply_mode'):
-        # Если не в режиме ответа, пропускаем чтобы обработалось в ConversationHandler
+        # Если не в режиме ответа, отправляем в основной обработчик
+        await main_menu(update, context)
         return
     
-    # Проверяем нажатие кнопки отмены
-    if update.message.text == '❌ Отменить ответ':
-        await update.message.reply_text(
-            "❌ Ответ отменён. Возвращаюсь в главное меню.",
-            reply_markup=main_menu_keyboard()
-        )
-        context.user_data.clear()
-        return
-    
-    # Если в режиме ответа и не отмена, обрабатываем здесь
+    # Если в режиме ответа, обрабатываем здесь
     return await handle_admin_reply_input(update, context)
 
 async def handle_show_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1763,11 +1753,11 @@ def main():
         allow_reentry=True
     )
 
-    application.add_handler(conv_handler)
     application.add_handler(MessageHandler(
         filters.TEXT & filters.User(ADMIN_USER_IDS), 
         handle_admin_reply_direct
     ))
+    application.add_handler(conv_handler)
     application.add_handler(CommandHandler('admin', admin_command))
     application.add_handler(CommandHandler("messages", handle_messages_list))
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
