@@ -1315,7 +1315,7 @@ async def handle_quick_reply_button(update: Update, context: ContextTypes.DEFAUL
     
     # Очищаем и устанавливаем данные
     context.user_data.clear()
-    context.user_data['admin_reply_mode'] = True  # 🔥 ДОБАВЬТЕ ЭТОТ ФЛАГ
+    context.user_data['admin_reply_mode'] = True
     context.user_data['reply_to_user'] = target_user_id
     context.user_data['original_message_id'] = original_message_id
     
@@ -1334,15 +1334,18 @@ async def handle_quick_reply_button(update: Update, context: ContextTypes.DEFAUL
     
     context.user_data['original_message_text'] = original_message_text
     
+    # Создаем клавиатуру с кнопкой отмены
+    cancel_keyboard = ReplyKeyboardMarkup([['❌ Отменить ответ']], resize_keyboard=True)
+    
     await query.message.reply_text(
         f"💌 *РЕЖИМ ОТВЕТА АДМИНА*\n\n"
         f"👤 *Пользователь:* {target_user_name}\n"
         f"🆔 *ID:* {target_user_id}\n\n"
         f"*Оригинальное сообщение:*\n{original_message_text}\n\n"
         f"👇 *Введите ваш ответ ниже:*\n\n"
-        f"ℹ️ Для отмены нажмите /cancel",
+        f"ℹ️ Для отмены нажмите кнопку '❌ Отменить ответ'",
         parse_mode='Markdown',
-        reply_markup=ReplyKeyboardRemove()
+        reply_markup=cancel_keyboard  # Используем клавиатуру с кнопкой отмены
     )
     
     return AWAITING_ADMIN_REPLY
@@ -1361,9 +1364,10 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
     
     reply_text = update.message.text
     
+    # Проверяем нажатие кнопки отмены
     if reply_text == '❌ Отменить ответ':
         await update.message.reply_text(
-            "Ответ отменён",
+            "❌ Ответ отменён. Возвращаюсь в главное меню.",
             reply_markup=main_menu_keyboard()
         )
         context.user_data.clear()
@@ -1427,16 +1431,26 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
     context.user_data.clear()
     return MAIN_MENU
 
+
 async def handle_admin_reply_direct(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Прямой обработчик ответов админа (вне ConversationHandler)"""
     user_id = update.effective_user.id
     
     # Проверяем, что админ в режиме ответа
-    if user_id not in ADMIN_USER_IDS or not context.user_data.get('reply_to_user'):
+    if user_id not in ADMIN_USER_IDS or not context.user_data.get('admin_reply_mode'):
         # Если не в режиме ответа, пропускаем чтобы обработалось в ConversationHandler
         return
     
-    # Если в режиме ответа, обрабатываем здесь
+    # Проверяем нажатие кнопки отмены
+    if update.message.text == '❌ Отменить ответ':
+        await update.message.reply_text(
+            "❌ Ответ отменён. Возвращаюсь в главное меню.",
+            reply_markup=main_menu_keyboard()
+        )
+        context.user_data.clear()
+        return
+    
+    # Если в режиме ответа и не отмена, обрабатываем здесь
     return await handle_admin_reply_input(update, context)
 
 async def handle_show_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
