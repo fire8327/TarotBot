@@ -1169,7 +1169,7 @@ async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # Добавьте команду для просмотра сообщений
 async def handle_messages_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать непрочитанные сообщения"""
+    """Показать непрочитанные сообщения с удобными кнопками"""
     user_id = update.effective_user.id
     
     if user_id not in ADMIN_USER_IDS:
@@ -1182,15 +1182,39 @@ async def handle_messages_list(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("📭 Нет новых сообщений")
         return
     
-    text = "📨 *Непрочитанные сообщения:*\n\n"
-    for msg in messages[:10]:
+    # Создаем удобную клавиатуру с кнопками для каждого сообщения
+    keyboard = []
+    for i, msg in enumerate(messages[:10]):  # Показываем до 10 сообщений
         user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
-        text += f"👤 {user_name} (ID: {msg['user_id']})\n"
-        text += f"💬 {msg['message_text'][:100]}...\n"
-        text += f"⏰ {msg['created_at'].strftime('%d.%m %H:%M')}\n"
-        text += f"📎 Ответить: /reply_{msg['user_id']} ваш текст\n\n"
+        # Обрезаем длинные имена для кнопки
+        button_text = f"💌 {user_name[:12]}..." if len(user_name) > 12 else f"💌 {user_name}"
+        
+        keyboard.append([InlineKeyboardButton(
+            button_text, 
+            callback_data=f"quick_reply_{msg['user_id']}"
+        )])
     
-    await update.message.reply_text(text, parse_mode='Markdown')
+    # Добавляем кнопку обновления
+    keyboard.append([InlineKeyboardButton("🔄 Обновить список", callback_data="show_all_messages")])
+    
+    # Формируем текст с краткой информацией
+    text = f"📨 *Непрочитанные сообщения: {len(messages)}*\n\n"
+    text += "*Нажми на кнопку ниже для быстрого ответа:*\n\n"
+    
+    for i, msg in enumerate(messages[:5]):  # Показываем первые 5 в тексте
+        user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
+        text += f"👤 *{user_name}* (ID: `{msg['user_id']}`)\n"
+        text += f"💬 {msg['message_text'][:80]}...\n"
+        text += f"⏰ {msg['created_at'].strftime('%d.%m %H:%M')}\n\n"
+    
+    if len(messages) > 5:
+        text += f"*... и ещё {len(messages) - 5} сообщений*"
+    
+    await update.message.reply_text(
+        text,
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 async def handle_user_id_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ввода ID пользователя"""
@@ -1421,6 +1445,7 @@ def main():
             AWAITING_READING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_reading_type_selection)],
             AWAITING_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_id_input)],
             AWAITING_FEEDBACK: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_feedback)],
+            AWAITING_ADMIN_REPLY: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_reply_input)],
         },
         fallbacks=[
             CommandHandler('cancel', cancel),
@@ -1440,6 +1465,8 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_feedback_button, pattern="^feedback_(yes|no)_"))
     application.add_handler(CallbackQueryHandler(show_full_reading, pattern="^full_reading_"))
     application.add_handler(CallbackQueryHandler(menu_invite_friend, pattern="^menu_invite_friend$"))
+    application.add_handler(CallbackQueryHandler(handle_quick_reply_button, pattern="^quick_reply_"))
+    application.add_handler(CallbackQueryHandler(handle_show_all_messages, pattern="^show_all_messages$"))
     application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
 
     # Запускаем бота
