@@ -1462,7 +1462,6 @@ async def handle_quick_reply_button(update: Update, context: ContextTypes.DEFAUL
     
     return AWAITING_ADMIN_REPLY
 
-
 async def handle_admin_reply_direct(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Прямой обработчик ответов админа (вне ConversationHandler)"""
     user_id = update.effective_user.id
@@ -1531,6 +1530,124 @@ async def handle_show_all_messages(update: Update, context: ContextTypes.DEFAULT
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+async def handle_show_full_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать полную историю всех сообщений с пагинацией"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_USER_IDS:
+        return
+    
+    # Получаем все сообщения из базы данных
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT um.*, u.name as full_user_name 
+            FROM user_messages um
+            LEFT JOIN users u ON um.user_id = u.user_id
+            ORDER BY um.created_at DESC
+            LIMIT 50
+        """)
+        all_messages = cur.fetchall()
+    conn.close()
+    
+    if not all_messages:
+        await query.edit_message_text(
+            "📭 *Нет сообщений в истории*\n\n"
+            "Здесь будут отображаться все сообщения от пользователей.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Разделяем на отвеченные и новые
+    new_messages = [msg for msg in all_messages if msg['status'] == 'new']
+    replied_messages = [msg for msg in all_messages if msg['status'] == 'replied']
+    
+    # Создаем текст сообщения
+    text = f"📨 *Полная история сообщений*\n\n"
+    text += f"📊 *Статистика:*\n"
+    text += f"• 🆕 Новые: {len(new_messages)}\n"
+    text += f"• ✅ Отвеченные: {len(replied_messages)}\n"
+    text += f"• 📋 Всего: {len(all_messages)}\n\n"
+    
+    # Показываем последние 10 сообщений с деталями
+    for i, msg in enumerate(all_messages[:10]):
+        user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
+        status_emoji = "🆕" if msg['status'] == 'new' else "✅"
+        created_at = msg['created_at'].strftime('%d.%m.%Y %H:%M') if hasattr(msg['created_at'], 'strftime') else str(msg['created_at'])
+        
+        text += f"{status_emoji} *{i+1}. {user_name}* (ID: `{msg['user_id']}`)\n"
+        text += f"📅 *Когда:* {created_at}\n"
+        
+        # Обрезаем длинный текст сообщения
+        message_preview = msg['message_text']
+        if len(message_preview) > 100:
+            message_preview = message_preview[:100] + "..."
+        text += f"💬 *Сообщение:* {message_preview}\n"
+        
+        if msg['status'] == 'replied' and msg['admin_reply']:
+            reply_preview = msg['admin_reply']
+            if len(reply_preview) > 50:
+                reply_preview = reply_preview[:50] + "..."
+            text += f"📨 *Ответ:* {reply_preview}\n"
+        
+        text += "\n"
+    
+    if len(all_messages) > 10:
+        text += f"*... и ещё {len(all_messages) - 10} сообщений*\n\n"
+    
+    text += "💡 *Используйте кнопки ниже для навигации:*"
+    
+    # Создаем клавиатуру для навигации
+    keyboard = []
+    
+    # Кнопки для быстрого ответа на новые сообщения
+    new_for_quick_reply = [msg for msg in new_messages[:3]]
+    if new_for_quick_reply:
+        keyboard.append([InlineKeyboardButton("🚀 Быстрые ответы на новые", callback_data="show_all_messages")])
+    
+    # Основные кнопки навигации
+    keyboard.append([
+        InlineKeyboardButton("🆕 Только новые", callback_data="show_new_messages"),
+        InlineKeyboardButton("🔄 Обновить", callback_data="show_full_history")
+    ])
+    keyboard.append([
+        InlineKeyboardButton("📋 Непрочитанные", callback_data="show_all_messages"),
+        InlineKeyboardButton("🏠 В меню", callback_data="admin_back_to_menu")
+    ])
+    
+    try:
+        await query.edit_message_text(
+            text,
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при редактировании сообщения истории: {e}")
+        # Если не удалось отредактировать, отправляем новое сообщение
+        await query.message.reply_text(
+            text,
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+async def handle_admin_back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик кнопки возврата в админ-меню"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_USER_IDS:
+        return
+    
+    await query.edit_message_text(
+        "⚡ *Панель администратора Зеркала Судеб* ⚡\n\n"
+        "Выберите действие:",
+        parse_mode='Markdown',
+        reply_markup=admin_keyboard()
+    )
+
 # --- 🏁 ЗАПУСК БОТА ---
 def main():
     init_db()
@@ -1562,10 +1679,6 @@ def main():
     ))
     application.add_handler(CommandHandler('admin', admin_command))
     application.add_handler(CommandHandler("messages", handle_messages_list))
-    application.add_handler(MessageHandler(
-        filters.TEXT & filters.User(ADMIN_USER_IDS), 
-        handle_admin_reply_direct
-    ))
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     application.add_handler(MessageHandler(filters.Regex('^🛍️ Купить расклады$'), buy_readings))
@@ -1578,6 +1691,7 @@ def main():
     application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
     application.add_handler(CallbackQueryHandler(handle_show_all_messages, pattern="^show_new_messages$"))
     application.add_handler(CallbackQueryHandler(handle_messages_history, pattern="^show_full_history$"))
+    application.add_handler(CallbackQueryHandler(handle_admin_back_to_menu, pattern="^admin_back_to_menu$"))
     application.add_handler(CommandHandler("history", handle_messages_history))
 
     # Запускаем бота
