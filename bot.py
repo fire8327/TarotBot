@@ -1138,7 +1138,8 @@ def main():
         entry_points=[CommandHandler('start', start)],
         states={
             GET_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
-            MAIN_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu)],
+            MAIN_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu),
+            MessageHandler(filters.Regex('^(🎁 Добавить расклады ВСЕМ|👤 Добавить расклады пользователю|🔄 Обнулить счётчики бесплатных|📢 Сделать рассылку|🏠 Главное меню)$'), handle_admin_actions)],
             AWAITING_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_question)],
             AWAITING_READING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_reading_type_selection)],
             AWAITING_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_id_input)],
@@ -1152,7 +1153,6 @@ def main():
 
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler('admin', admin_command))
-    application.add_handler(MessageHandler(filters.Regex('^(🎁 Добавить расклады ВСЕМ|👤 Добавить расклады пользователю|🔄 Обнулить счётчики бесплатных|📢 Сделать рассылку|🏠 Главное меню)$'), handle_admin_actions))
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     application.add_handler(MessageHandler(filters.Regex('^🛍️ Купить расклады$'), buy_readings))
