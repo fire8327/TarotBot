@@ -112,8 +112,7 @@ def main_menu_keyboard():
     keyboard = [
         ['🔮 Сделать расклад'],
         ['⭐ Мой профиль', '🃏 Карта дня'],
-        ['📜 О боте'],
-        ['🤝 Пригласить друга']
+        ['📜 О боте', '🤝 Пригласить друга']
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -125,9 +124,23 @@ def reading_type_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
+def profile_keyboard():
+    keyboard = [
+        ['📜 Мои последние расклады'],
+        ['🛍️ Купить расклады'], 
+        ['🤝 Пригласить друга'],
+        ['🏠 Главное меню']
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
 # --- 🧩 ОСНОВНЫЕ ОБРАБОТЧИКИ ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Всегда сбрасываем состояние и очищаем данные
+    context.user_data.clear()
+    
     args = context.args  # Получаем аргументы после /start
+    
+    # Обработка специальных команд
     if args and args[0] == 'update':
         await update.message.reply_text("🌀 Начинаем обновление зеркала...")
         await update.message.reply_text(
@@ -135,43 +148,49 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_menu_keyboard()
         )
         return MAIN_MENU
-    else:    
 
-        user_id = update.effective_user.id
-        user = get_user(user_id)
+    user_id = update.effective_user.id
+    user = get_user(user_id)
 
-        referrer_id = None
-        if context.args and context.args[0].startswith('ref_'):
-            try:
-                referrer_id = int(context.args[0].replace('ref_', ''))
-                if referrer_id == user_id:
-                    referrer_id = None
-            except ValueError:
+    # Обработка реферальной системы
+    referrer_id = None
+    if context.args and context.args[0].startswith('ref_'):
+        try:
+            referrer_id = int(context.args[0].replace('ref_', ''))
+            if referrer_id == user_id:
                 referrer_id = None
+        except ValueError:
+            referrer_id = None
 
-        user_name = user['name'] if user['name'] else ""
+    user_name = user['name'] if user['name'] else ""
 
-        if user_name:
-            await update.message.reply_text(
-                f"🌑 *Ты вернулся, {user_name}...*\n"
-                "Зеркало Судеб вновь открыто для тебя. Выбери путь:",
-                parse_mode='Markdown',
-                reply_markup=main_menu_keyboard()
-            )
-            return MAIN_MENU
-        else:
-            if referrer_id:
-                context.user_data['referrer_id'] = referrer_id
+    # ЕСЛИ пользователь УЖЕ зарегистрирован - сразу в главное меню
+    if user_name:
+        # Если есть реферер - обрабатываем даже для существующих пользователей
+        if referrer_id:
+            await process_referral_bonus(update, context, user_id, user_name, referrer_id)
+        
+        await update.message.reply_text(
+            f"🌙 *С возвращением, {user_name}!*\n"
+            "Зеркало Судеб вновь открыто для тебя. Выбери путь:",
+            parse_mode='Markdown',
+            reply_markup=main_menu_keyboard()
+        )
+        return MAIN_MENU
+    else:
+        # НОВЫЙ пользователь - регистрация
+        if referrer_id:
+            context.user_data['referrer_id'] = referrer_id
 
-            await update.message.reply_text(
-                "🌙 *Добро пожаловать в Зеркало Судеб* 🌙\n\n"
-                "Я — хранитель древних знаний, проводник между мирами.\n\n"
-                "Как мне звать тебя в Книге Судеб? Можешь указать имя или титул. "
-                "Если предпочитаешь остаться тенью — напиши «Аноним».",
-                parse_mode='Markdown',
-                reply_markup=ReplyKeyboardRemove()
-            )
-            return GET_NAME
+        await update.message.reply_text(
+            "🌙 *Добро пожаловать в Зеркало Судеб* 🌙\n\n"
+            "Я — хранитель древних знаний, проводник между мирами.\n\n"
+            "Как мне звать тебя в Книге Судеб? Можешь указать имя или титул. "
+            "Если предпочитаешь остаться тенью — напиши «Аноним».",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return GET_NAME
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -258,7 +277,11 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif user_input == '📜 Мои последние расклады':
         await show_reading_history(update, context)
         return MAIN_MENU
-    elif user_input == '⬅️ Назад в меню':
+    elif user_input == '🏠 Главное меню':
+        await update.message.reply_text(
+            "🌑 Возвращаюсь в Зал Зеркал...",
+            reply_markup=main_menu_keyboard()
+        )
         return MAIN_MENU
     else:
         await update.message.reply_text(
@@ -330,6 +353,37 @@ def fallback_reading(reading_type, user_name):
 🃏 *Карта 3: Император* — Для успеха потребуется дисциплина и структурированный подход.
 Помни: карты показывают потенциал, а не стопроцентный результат. Ты держишь перо, которым пишешь свою судьбу.
 """
+
+async def process_referral_bonus(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id, user_name, referrer_id):
+    """Обработка бонуса за реферала для существующих пользователей"""
+    try:
+        referrer = get_user(referrer_id)
+        if referrer and referrer.get('name'):
+            ref_balance = referrer['readings_balance']
+            update_user_balance(referrer_id, ref_balance + REFERRAL_BONUS_READINGS)
+            increment_referral_count(referrer_id)
+
+            save_purchase(
+                user_id=referrer_id,
+                payload="referral_bonus",
+                readings=REFERRAL_BONUS_READINGS,
+                price_stars=0,
+                actual_amount=0,
+                charge_id=f"ref_{user_id}"
+            )
+
+            try:
+                await context.bot.send_message(
+                    chat_id=referrer_id,
+                    text=f"✨ *Твой друг {user_name} вернулся по твоей ссылке!*\n"
+                         f"В награду ты получаешь +{REFERRAL_BONUS_READINGS} бесплатный расклад. Всего приглашено: {referrer.get('referral_count', 0)}",
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.warning(f"Не удалось отправить сообщение рефереру {referrer_id}: {e}")
+
+    except Exception as e:
+        logger.error(f"Ошибка при обработке реферера {referrer_id} для пользователя {user_id}: {e}")
 
 # --- 🔄 ОБРАБОТЧИКИ ДИАЛОГОВ ---
 async def handle_reading_type_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -445,13 +499,8 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Чем чаще ты гадаешь — тем яснее становится твоя судьба.
 👇 Выбери действие:
 """
-    keyboard = [
-        ['📜 Мои последние расклады'],
-        ['🛍️ Купить расклады'],
-        ['🤝 Пригласить друга'],
-        ['⬅️ Назад в меню']
-    ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    # Используем новую клавиатуру профиля
+    reply_markup = profile_keyboard()
     await update.message.reply_text(profile_text, parse_mode='Markdown', reply_markup=reply_markup)
     return MAIN_MENU
 
