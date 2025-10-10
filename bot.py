@@ -1783,7 +1783,7 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_show_all_messages, pattern="^show_all_messages$"))
     application.add_handler(CallbackQueryHandler(handle_show_all_messages, pattern="^show_new_messages$"))
     application.add_handler(CallbackQueryHandler(handle_show_full_history, pattern="^show_full_history$"))
-    application.add_handler(CallbackQueryHandler(handle_admin_back_to_menu, pattern="^admin_back_to_menu$"))
+    application.add_handler(CallbackQueryHandler(handle_admin_back_to_menu_cmd, pattern="^admin_back_to_menu$"))
 
     # Запускаем бота
     logger.info("Бот запущен и готов к работе!")
