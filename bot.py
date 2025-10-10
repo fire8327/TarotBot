@@ -1125,42 +1125,88 @@ async def notify_admin_about_new_message(context: ContextTypes.DEFAULT_TYPE, use
         except Exception as e:
             logger.error(f"❌ Не удалось уведомить админа {admin_id}: {str(e)}")
 
-async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /reply для админов"""
+async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ввода ответа от админа"""
     user_id = update.effective_user.id
     
-    if user_id not in ADMIN_USER_IDS:
-        await update.message.reply_text("❌ Доступ запрещён")
-        return
+    # Проверяем, что это админ и он в режиме ответа
+    if user_id not in ADMIN_USER_IDS or not context.user_data.get('admin_reply_mode'):
+        await update.message.reply_text(
+            "🌑 Я не понял твой знак... Выбери путь из меню.",
+            reply_markup=main_menu_keyboard()
+        )
+        return MAIN_MENU
     
-    # Парсим команду: /reply_123456 Текст ответа
-    command_parts = update.message.text.split(' ', 1)
-    if len(command_parts) < 2:
-        await update.message.reply_text("❌ Формат: /reply_USER_ID Текст ответа")
-        return
+    reply_text = update.message.text
     
-    target_user_id = command_parts[0].replace('/reply_', '')
-    reply_text = command_parts[1] if len(command_parts) > 1 else ""
+    # Проверяем нажатие кнопки отмены
+    if reply_text == '❌ Отменить ответ':
+        await update.message.reply_text(
+            "❌ Ответ отменён. Возвращаюсь в главное меню.",
+            reply_markup=main_menu_keyboard()
+        )
+        context.user_data.clear()
+        return MAIN_MENU
+    
+    target_user_id = context.user_data.get('reply_to_user')
+    original_message_text = context.user_data.get('original_message_text', 'Неизвестное сообщение')
+    original_message_id = context.user_data.get('original_message_id')
+    
+    if not target_user_id:
+        await update.message.reply_text(
+            "❌ Ошибка: не найден пользователь для ответа",
+            reply_markup=main_menu_keyboard()
+        )
+        context.user_data.clear()
+        return MAIN_MENU
     
     try:
-        target_user_id = int(target_user_id)
+        # Форматируем ответ в нужном формате
+        formatted_reply = f"""💌 *Ответ от разработчика*
+
+*Ваш вопрос:*
+{original_message_text}
+
+*Ответ разработчика:*
+{reply_text}
+
+---
+Если у вас остались вопросы, просто напишите снова! ✨"""
         
         # Отправляем ответ пользователю
         await context.bot.send_message(
             chat_id=target_user_id,
-            text=f"💌 *Ответ от разработчика:*\n\n{reply_text}",
+            text=formatted_reply,
             parse_mode='Markdown'
         )
         
         # Сохраняем в историю
-        save_user_message(user_id, "Admin", f"Ответ пользователю {target_user_id}: {reply_text}", "admin_reply")
+        target_user = get_user(target_user_id)
+        target_user_name = target_user.get('name', 'Неизвестный')
+        save_user_message(user_id, "Admin", f"Ответ для {target_user_name}: {reply_text}", "admin_reply")
         
-        await update.message.reply_text("✅ Ответ отправлен пользователю")
+        # 🔥 ПОМЕЧАЕМ ИСХОДНОЕ СООБЩЕНИЕ КАК ОТВЕЧЕННОЕ
+        if original_message_id:
+            update_message_status(original_message_id, 'replied', reply_text)
+            logger.info(f"✅ Сообщение {original_message_id} помечено как отвеченное")
         
-    except ValueError:
-        await update.message.reply_text("❌ Неверный ID пользователя")
+        await update.message.reply_text(
+            f"✅ *Ответ отправлен пользователю {target_user_name}!*\n"
+            f"📨 Сообщение удалено из списка непрочитанных.",
+            parse_mode='Markdown',
+            reply_markup=main_menu_keyboard()
+        )
+        
     except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка отправки: {e}")
+        logger.error(f"Ошибка отправки ответа пользователю {target_user_id}: {e}")
+        await update.message.reply_text(
+            f"❌ Ошибка отправки: {str(e)}",
+            reply_markup=main_menu_keyboard()
+        )
+    
+    # Всегда сбрасываем данные
+    context.user_data.clear()
+    return MAIN_MENU
 
 # Добавьте команду для просмотра сообщений
 async def handle_messages_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1174,7 +1220,12 @@ async def handle_messages_list(update: Update, context: ContextTypes.DEFAULT_TYP
     messages = get_unread_messages()
     
     if not messages:
-        await update.message.reply_text("📭 Нет новых сообщений")
+        await update.message.reply_text(
+            "📭 *Нет новых сообщений*\n\n"
+            "Все сообщения отвечены! 🎉\n"
+            "Используйте /history чтобы посмотреть историю.",
+            parse_mode='Markdown'
+        )
         return
     
     # Создаем удобную клавиатуру с кнопками для каждого сообщения
@@ -1183,16 +1234,17 @@ async def handle_messages_list(update: Update, context: ContextTypes.DEFAULT_TYP
         user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
         button_text = f"💌 {user_name[:12]}..." if len(user_name) > 12 else f"💌 {user_name}"
         
-        # Теперь передаем и ID сообщения тоже
         keyboard.append([InlineKeyboardButton(
             button_text, 
             callback_data=f"quick_reply_{msg['user_id']}_{msg['id']}"
         )])
     
     keyboard.append([InlineKeyboardButton("🔄 Обновить список", callback_data="show_all_messages")])
+    keyboard.append([InlineKeyboardButton("📋 Вся история", callback_data="show_full_history")])
     
     text = f"📨 *Непрочитанные сообщения: {len(messages)}*\n\n"
-    text += "*Нажми на кнопку ниже для быстрого ответа:*\n\n"
+    text += "*Нажми на кнопку ниже для быстрого ответа:*\n"
+    text += "💡 *Сообщения удаляются из списка после ответа*\n\n"
     
     for i, msg in enumerate(messages[:5]):
         user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
@@ -1202,6 +1254,66 @@ async def handle_messages_list(update: Update, context: ContextTypes.DEFAULT_TYP
     
     if len(messages) > 5:
         text += f"*... и ещё {len(messages) - 5} сообщений*"
+    
+    await update.message.reply_text(
+        text,
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def handle_messages_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать историю всех сообщений (отвеченных и новых)"""
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_USER_IDS:
+        await update.message.reply_text("❌ Доступ запрещён")
+        return
+    
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT um.*, u.name as full_user_name 
+            FROM user_messages um
+            LEFT JOIN users u ON um.user_id = u.user_id
+            ORDER BY um.created_at DESC
+            LIMIT 20
+        """)
+        all_messages = cur.fetchall()
+    conn.close()
+    
+    if not all_messages:
+        await update.message.reply_text("📭 Нет сообщений в истории")
+        return
+    
+    # Разделяем на отвеченные и новые
+    new_messages = [msg for msg in all_messages if msg['status'] == 'new']
+    replied_messages = [msg for msg in all_messages if msg['status'] == 'replied']
+    
+    text = f"📨 *История сообщений*\n\n"
+    text += f"🆕 *Новые:* {len(new_messages)}\n"
+    text += f"✅ *Отвеченные:* {len(replied_messages)}\n\n"
+    
+    # Показываем последние 5 сообщений
+    for i, msg in enumerate(all_messages[:5]):
+        user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
+        status_emoji = "🆕" if msg['status'] == 'new' else "✅"
+        
+        text += f"{status_emoji} *{user_name}* (ID: `{msg['user_id']}`)\n"
+        text += f"💬 {msg['message_text'][:80]}...\n"
+        text += f"⏰ {msg['created_at'].strftime('%d.%m %H:%M')}\n"
+        
+        if msg['status'] == 'replied' and msg['admin_reply']:
+            text += f"📨 Ответ: {msg['admin_reply'][:50]}...\n"
+        
+        text += "\n"
+    
+    if len(all_messages) > 5:
+        text += f"*... и ещё {len(all_messages) - 5} сообщений*"
+    
+    keyboard = [
+        [InlineKeyboardButton("🆕 Только новые", callback_data="show_new_messages")],
+        [InlineKeyboardButton("📋 Вся история", callback_data="show_full_history")]
+    ]
     
     await update.message.reply_text(
         text,
@@ -1350,87 +1462,6 @@ async def handle_quick_reply_button(update: Update, context: ContextTypes.DEFAUL
     
     return AWAITING_ADMIN_REPLY
 
-async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка ввода ответа от админа"""
-    user_id = update.effective_user.id
-    
-    # Проверяем, что это админ и он в режиме ответа
-    if user_id not in ADMIN_USER_IDS or not context.user_data.get('admin_reply_mode'):
-        await update.message.reply_text(
-            "🌑 Я не понял твой знак... Выбери путь из меню.",
-            reply_markup=main_menu_keyboard()
-        )
-        return MAIN_MENU
-    
-    reply_text = update.message.text
-    
-    # Проверяем нажатие кнопки отмены
-    if reply_text == '❌ Отменить ответ':
-        await update.message.reply_text(
-            "❌ Ответ отменён. Возвращаюсь в главное меню.",
-            reply_markup=main_menu_keyboard()
-        )
-        context.user_data.clear()
-        return MAIN_MENU
-    
-    target_user_id = context.user_data.get('reply_to_user')
-    original_message_text = context.user_data.get('original_message_text', 'Неизвестное сообщение')
-    
-    if not target_user_id:
-        await update.message.reply_text(
-            "❌ Ошибка: не найден пользователь для ответа",
-            reply_markup=main_menu_keyboard()
-        )
-        context.user_data.clear()
-        return MAIN_MENU
-    
-    try:
-        # Форматируем ответ в нужном формате
-        formatted_reply = f"""💌 *Ответ от разработчика*
-
-*Ваш вопрос:*
-{original_message_text}
-
-*Ответ разработчика:*
-{reply_text}
-
----
-Если у вас остались вопросы, просто напишите снова! ✨"""
-        
-        # Отправляем ответ пользователю
-        await context.bot.send_message(
-            chat_id=target_user_id,
-            text=formatted_reply,
-            parse_mode='Markdown'
-        )
-        
-        # Сохраняем в историю
-        target_user = get_user(target_user_id)
-        target_user_name = target_user.get('name', 'Неизвестный')
-        save_user_message(user_id, "Admin", f"Ответ для {target_user_name}: {reply_text}", "admin_reply")
-        
-        # Помечаем исходное сообщение как отвеченное
-        original_message_id = context.user_data.get('original_message_id')
-        if original_message_id:
-            update_message_status(original_message_id, 'replied', reply_text)
-        
-        await update.message.reply_text(
-            f"✅ *Ответ отправлен пользователю {target_user_name}!*",
-            parse_mode='Markdown',
-            reply_markup=main_menu_keyboard()
-        )
-        
-    except Exception as e:
-        logger.error(f"Ошибка отправки ответа пользователю {target_user_id}: {e}")
-        await update.message.reply_text(
-            f"❌ Ошибка отправки: {str(e)}",
-            reply_markup=main_menu_keyboard()
-        )
-    
-    # Всегда сбрасываем данные
-    context.user_data.clear()
-    return MAIN_MENU
-
 
 async def handle_admin_reply_direct(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Прямой обработчик ответов админа (вне ConversationHandler)"""
@@ -1465,11 +1496,17 @@ async def handle_show_all_messages(update: Update, context: ContextTypes.DEFAULT
     messages = get_unread_messages()
     
     if not messages:
-        await query.message.reply_text("📭 Нет новых сообщений")
+        await query.message.reply_text(
+            "📭 *Нет новых сообщений*\n\n"
+            "Все сообщения отвечены! 🎉",
+            parse_mode='Markdown'
+        )
         return
     
     # Показываем первые 5 сообщений с кнопками для ответа
     text = "📨 *Новые сообщения:*\n\n"
+    text += "💡 *Сообщения автоматически удаляются из этого списка после ответа*\n\n"
+    
     for i, msg in enumerate(messages[:5]):
         user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
         text += f"*{i+1}. {user_name}* (ID: {msg['user_id']})\n"
@@ -1482,10 +1519,11 @@ async def handle_show_all_messages(update: Update, context: ContextTypes.DEFAULT
         user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
         keyboard.append([InlineKeyboardButton(
             f"💌 Ответить {user_name[:15]}...", 
-            callback_data=f"quick_reply_{msg['user_id']}"
+            callback_data=f"quick_reply_{msg['user_id']}_{msg['id']}"
         )])
     
     keyboard.append([InlineKeyboardButton("🔄 Обновить список", callback_data="show_all_messages")])
+    keyboard.append([InlineKeyboardButton("📋 Вся история", callback_data="show_full_history")])
     
     await query.message.reply_text(
         text,
@@ -1535,6 +1573,9 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_quick_reply_button, pattern="^quick_reply_"))
     application.add_handler(CallbackQueryHandler(handle_show_all_messages, pattern="^show_all_messages$"))
     application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
+    application.add_handler(CallbackQueryHandler(handle_show_all_messages, pattern="^show_new_messages$"))
+    application.add_handler(CallbackQueryHandler(handle_messages_history, pattern="^show_full_history$"))
+    application.add_handler(CommandHandler("history", handle_messages_history))
 
     # Запускаем бота
     application.run_polling()
