@@ -199,27 +199,27 @@ def get_all_users():
     conn.close()
     return users
 
-    def add_readings_to_user(user_id, readings_count):
-        """Добавить расклады пользователю"""
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE users SET readings_balance = readings_balance + %s WHERE user_id = %s",
-            (readings_count, user_id)
-        )
-        conn.commit()
-        conn.close()
+def add_readings_to_user(user_id, readings_count):
+    """Добавить расклады пользователю"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET readings_balance = readings_balance + %s WHERE user_id = %s",
+        (readings_count, user_id)
+    )
+    conn.commit()
+    conn.close()
 
-    def add_readings_to_all_users(readings_count):
-        """Добавить расклады всем пользователям"""
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE users SET readings_balance = readings_balance + %s",
-            (readings_count,)
-        )
-        conn.commit()
-        conn.close()
+def add_readings_to_all_users(readings_count):
+    """Добавить расклады всем пользователям"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET readings_balance = readings_balance + %s",
+        (readings_count,)
+    )
+    conn.commit()
+    conn.close()
 
 def reset_free_readings_counter():
     """Обнулить счётчик бесплатных раскладов для всех пользователей"""
