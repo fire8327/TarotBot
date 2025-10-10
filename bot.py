@@ -1195,12 +1195,19 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
             update_message_status(original_message_id, 'replied', reply_text)
             logger.info(f"✅ Сообщение {original_message_id} помечено как отвеченное")
         
-        await update.message.reply_text(
-            f"✅ *Ответ отправлен пользователю {target_user_name}!*\n"
-            f"📨 Сообщение удалено из списка непрочитанных.",
-            parse_mode='Markdown',
-            reply_markup=main_menu_keyboard()
-        )
+        # 🔥 ДОБАВЛЕНО: автоматически обновляем список сообщений
+        messages = get_unread_messages()
+        if messages:
+            # Показываем обновленный список
+            await handle_show_all_messages_custom(update, context, messages)
+        else:
+            # Если сообщений больше нет, показываем пустой список
+            await update.message.reply_text(
+                "📭 *Все сообщения отвечены!* 🎉\n\n"
+                "Новых непрочитанных сообщений нет.",
+                parse_mode='Markdown',
+                reply_markup=admin_keyboard()
+            )
         
     except Exception as e:
         logger.error(f"Ошибка отправки ответа пользователю {target_user_id}: {e}")
@@ -1212,6 +1219,52 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
     # Всегда сбрасываем данные
     context.user_data.clear()
     return MAIN_MENU
+
+# 🔥 ДОБАВИМ вспомогательную функцию для показа обновленного списка
+async def handle_show_all_messages_custom(update: Update, context: ContextTypes.DEFAULT_TYPE, messages=None):
+    """Показать обновленный список сообщений (используется после ответа)"""
+    if messages is None:
+        messages = get_unread_messages()
+    
+    if not messages:
+        text = "📭 *Нет новых сообщений*\n\nВсе сообщения отвечены! 🎉"
+        if hasattr(update, 'message') and update.message:
+            await update.message.reply_text(text, parse_mode='Markdown')
+        else:
+            await update.edit_message_text(text, parse_mode='Markdown')
+        return
+    
+    # Создаем удобную клавиатуру с кнопками для каждого сообщения
+    keyboard = []
+    for i, msg in enumerate(messages[:10]):
+        user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
+        button_text = f"💌 {user_name[:12]}..." if len(user_name) > 12 else f"💌 {user_name}"
+        
+        keyboard.append([InlineKeyboardButton(
+            button_text, 
+            callback_data=f"quick_reply_{msg['user_id']}_{msg['id']}"
+        )])
+    
+    keyboard.append([InlineKeyboardButton("🔄 Обновить список", callback_data="show_all_messages")])
+    keyboard.append([InlineKeyboardButton("📋 Вся история", callback_data="show_full_history")])
+    
+    text = f"📨 *Непрочитанные сообщения: {len(messages)}*\n\n"
+    text += "*Нажми на кнопку ниже для быстрого ответа:*\n"
+    text += "💡 *Сообщения удаляются из списка после ответа*\n\n"
+    
+    for i, msg in enumerate(messages[:5]):
+        user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
+        text += f"👤 *{user_name}* (ID: `{msg['user_id']}`)\n"
+        text += f"💬 {msg['message_text'][:80]}...\n"
+        text += f"⏰ {msg['created_at'].strftime('%d.%m %H:%M')}\n\n"
+    
+    if len(messages) > 5:
+        text += f"*... и ещё {len(messages) - 5} сообщений*"
+    
+    if hasattr(update, 'message') and update.message:
+        await update.message.reply_text(text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await update.edit_message_text(text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
 # Добавьте команду для просмотра сообщений
 async def handle_messages_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1727,7 +1780,7 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_quick_reply_button, pattern="^quick_reply_"))
     application.add_handler(CallbackQueryHandler(handle_show_all_messages, pattern="^show_all_messages$"))
     application.add_handler(CallbackQueryHandler(handle_show_all_messages, pattern="^show_new_messages$"))
-    application.add_handler(CallbackQueryHandler(handle_messages_history, pattern="^show_full_history$"))
+    application.add_handler(CallbackQueryHandler(handle_show_full_history, pattern="^show_full_history$"))
     application.add_handler(CallbackQueryHandler(handle_admin_back_to_menu, pattern="^admin_back_to_menu$"))
     application.add_handler(CallbackQueryHandler(handle_get_by_referral, pattern="^get_by_referral$"))
     application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
