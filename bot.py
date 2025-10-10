@@ -1151,6 +1151,9 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
         )
         return MAIN_MENU
     
+    # 🔥 ДОБАВЛЕНО: получаем текст ответа
+    reply_text = update.message.text  # <-- ЭТО СТРОКА ОТСУТСТВОВАЛА
+    
     target_user_id = context.user_data.get('reply_to_user')
     original_message_text = context.user_data.get('original_message_text', 'Неизвестное сообщение')
     original_message_id = context.user_data.get('original_message_id')
@@ -1539,8 +1542,7 @@ async def handle_admin_reply_direct(update: Update, context: ContextTypes.DEFAUL
     # Проверяем, что админ в режиме ответа
     if user_id not in ADMIN_USER_IDS or not context.user_data.get('admin_reply_mode'):
         # Если не в режиме ответа, отправляем в основной обработчик
-        await main_menu(update, context)
-        return
+        return await main_menu(update, context)
     
     # Если в режиме ответа, обрабатываем здесь
     return await handle_admin_reply_input(update, context)
@@ -1734,6 +1736,11 @@ def main():
     init_db()
     application = Application.builder().token(TOKEN).build()
 
+    application.add_handler(MessageHandler(
+        filters.TEXT & filters.User(ADMIN_USER_IDS), 
+        handle_admin_reply_direct
+    ))
+
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -1753,10 +1760,6 @@ def main():
         allow_reentry=True
     )
 
-    application.add_handler(MessageHandler(
-        filters.TEXT & filters.User(ADMIN_USER_IDS), 
-        handle_admin_reply_direct
-    ))
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler('admin', admin_command))
     application.add_handler(CommandHandler("messages", handle_messages_list))
