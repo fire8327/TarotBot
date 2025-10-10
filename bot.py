@@ -1100,11 +1100,14 @@ async def notify_admin_about_new_message(context: ContextTypes.DEFAULT_TYPE, use
     """Уведомление админа о новом сообщении"""
     for admin_id in ADMIN_USER_IDS:
         try:
+            # Сохраняем ID сообщения для отслеживания
+            message_id = save_user_message(user_id, user_name, message, 'feedback')
+            
             # Создаем клавиатуру для быстрого ответа
             keyboard = [
-                [InlineKeyboardButton("💌 Ответить пользователю", callback_data=f"quick_reply_{user_id}")],
-                [InlineKeyboardButton("📋 Все сообщения", callback_data="show_all_messages")
-            ]]
+                [InlineKeyboardButton("💌 Ответить пользователю", callback_data=f"quick_reply_{user_id}_{message_id}")],
+                [InlineKeyboardButton("📋 Все сообщения", callback_data="show_all_messages")]
+            ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await context.bot.send_message(
@@ -1121,14 +1124,6 @@ async def notify_admin_about_new_message(context: ContextTypes.DEFAULT_TYPE, use
             
         except Exception as e:
             logger.error(f"❌ Не удалось уведомить админа {admin_id}: {str(e)}")
-            # Попробуем отправить простое сообщение без форматирования
-            try:
-                await context.bot.send_message(
-                    chat_id=admin_id,
-                    text=f"Новое сообщение от {user_name} (ID: {user_id}): {message[:100]}..."
-                )
-            except Exception as e2:
-                logger.error(f"❌ Полный сбой отправки админу {admin_id}: {str(e2)}")
 
 async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /reply для админов"""
@@ -1184,24 +1179,22 @@ async def handle_messages_list(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # Создаем удобную клавиатуру с кнопками для каждого сообщения
     keyboard = []
-    for i, msg in enumerate(messages[:10]):  # Показываем до 10 сообщений
+    for i, msg in enumerate(messages[:10]):
         user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
-        # Обрезаем длинные имена для кнопки
         button_text = f"💌 {user_name[:12]}..." if len(user_name) > 12 else f"💌 {user_name}"
         
+        # Теперь передаем и ID сообщения тоже
         keyboard.append([InlineKeyboardButton(
             button_text, 
-            callback_data=f"quick_reply_{msg['user_id']}"
+            callback_data=f"quick_reply_{msg['user_id']}_{msg['id']}"
         )])
     
-    # Добавляем кнопку обновления
     keyboard.append([InlineKeyboardButton("🔄 Обновить список", callback_data="show_all_messages")])
     
-    # Формируем текст с краткой информацией
     text = f"📨 *Непрочитанные сообщения: {len(messages)}*\n\n"
     text += "*Нажми на кнопку ниже для быстрого ответа:*\n\n"
     
-    for i, msg in enumerate(messages[:5]):  # Показываем первые 5 в тексте
+    for i, msg in enumerate(messages[:5]):
         user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
         text += f"👤 *{user_name}* (ID: `{msg['user_id']}`)\n"
         text += f"💬 {msg['message_text'][:80]}...\n"
@@ -1315,20 +1308,34 @@ async def handle_quick_reply_button(update: Update, context: ContextTypes.DEFAUL
         await query.message.reply_text("❌ Доступ запрещён")
         return
     
-    # Извлекаем ID пользователя из callback_data: "quick_reply_123456"
-    target_user_id = int(query.data.replace('quick_reply_', ''))
+    # Извлекаем ID пользователя и сообщения из callback_data: "quick_reply_123456_789"
+    parts = query.data.replace('quick_reply_', '').split('_')
+    target_user_id = int(parts[0])
+    original_message_id = int(parts[1]) if len(parts) > 1 else None
+    
     context.user_data['reply_to_user'] = target_user_id
+    context.user_data['original_message_id'] = original_message_id
     
     # Получаем информацию о пользователе
     target_user = get_user(target_user_id)
     target_user_name = target_user.get('name', 'Неизвестный')
     
+    # Получаем оригинальное сообщение из БД
+    original_message_text = "Не удалось загрузить оригинальное сообщение"
+    if original_message_id:
+        user_messages = get_user_messages(target_user_id)
+        for msg in user_messages:
+            if msg['id'] == original_message_id:
+                original_message_text = msg['message_text']
+                break
+    
     # Сохраняем оригинальное сообщение для контекста
-    context.user_data['original_message'] = query.message.text
+    context.user_data['original_message_text'] = original_message_text
     
     await query.message.reply_text(
         f"💌 *Ответ пользователю:* {target_user_name} (ID: {target_user_id})\n\n"
-        f"Введите ваш ответ (или нажмите '❌ Отменить'):",
+        f"*Оригинальное сообщение:*\n{original_message_text}\n\n"
+        f"👇 *Введите ваш ответ ниже:*\n(или нажмите '❌ Отменить')",
         parse_mode='Markdown',
         reply_markup=ReplyKeyboardMarkup([['❌ Отменить ответ']], resize_keyboard=True)
     )
@@ -1352,16 +1359,29 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
         return MAIN_MENU
     
     target_user_id = context.user_data.get('reply_to_user')
+    original_message_text = context.user_data.get('original_message_text', 'Неизвестное сообщение')
     
     if not target_user_id:
         await update.message.reply_text("❌ Ошибка: не найден пользователь для ответа")
         return MAIN_MENU
     
     try:
+        # Форматируем ответ в нужном формате
+        formatted_reply = f"""💌 *Ответ от разработчика*
+
+*Ваш вопрос:*
+{original_message_text}
+
+*Ответ разработчика:*
+{reply_text}
+
+---
+Если у вас остались вопросы, просто напишите снова! ✨"""
+        
         # Отправляем ответ пользователю
         await context.bot.send_message(
             chat_id=target_user_id,
-            text=f"💌 *Ответ от разработчика:*\n\n{reply_text}",
+            text=formatted_reply,
             parse_mode='Markdown'
         )
         
@@ -1371,7 +1391,9 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
         save_user_message(user_id, "Admin", f"Ответ для {target_user_name}: {reply_text}", "admin_reply")
         
         # Помечаем исходное сообщение как отвеченное
-        # (здесь нужно будет доработать логику пометки конкретного сообщения)
+        original_message_id = context.user_data.get('original_message_id')
+        if original_message_id:
+            update_message_status(original_message_id, 'replied', reply_text)
         
         await update.message.reply_text(
             f"✅ Ответ отправлен пользователю {target_user_name}!",
@@ -1380,7 +1402,8 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
         
         # Очищаем временные данные
         context.user_data.pop('reply_to_user', None)
-        context.user_data.pop('original_message', None)
+        context.user_data.pop('original_message_id', None)
+        context.user_data.pop('original_message_text', None)
         
     except Exception as e:
         logger.error(f"Ошибка отправки ответа пользователю {target_user_id}: {e}")

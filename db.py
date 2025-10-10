@@ -247,9 +247,12 @@ def save_user_message(user_id, user_name, message_text, message_type='feedback')
         cur.execute("""
             INSERT INTO user_messages (user_id, user_name, message_text, message_type, status)
             VALUES (%s, %s, %s, %s, 'new')
+            RETURNING id
         """, (user_id, user_name, message_text, message_type))
+        message_id = cur.fetchone()['id']
         conn.commit()
     conn.close()
+    return message_id
 
 def get_unread_messages():
     conn = get_db_connection()
