@@ -321,20 +321,8 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     update_user_last_active(user_id)
 
-    if user_id in ADMIN_USER_IDS and context.user_data.get('admin_reply_mode'):
-        return await handle_admin_reply_input(update, context)
-
-    admin_buttons = [
-        '🎁 Добавить расклады ВСЕМ',
-        '👤 Добавить расклады пользователю', 
-        '🔄 Обнулить счётчики бесплатных',
-        '📢 Сделать рассылку',
-        '📨 Просмотреть сообщения',
-        '🏠 Главное меню'
-    ]
-    
-    if user_input in admin_buttons:
-        return await handle_admin_actions(update, context)
+    # 🔥 УБРАНО: админская логика - она теперь в отдельном обработчике
+    # Просто обрабатываем обычные команды пользователя
 
     if user_input == '⭐ Мой профиль':
         await show_profile(update, context)
@@ -1526,16 +1514,15 @@ async def handle_quick_reply_button(update: Update, context: ContextTypes.DEFAUL
     return AWAITING_ADMIN_REPLY
 
 async def handle_admin_reply_direct(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Прямой обработчик ответов админа (вне ConversationHandler)"""
+    """Прямой обработчик ответов админа"""
     user_id = update.effective_user.id
     
     # Проверяем, что админ в режиме ответа
-    if user_id not in ADMIN_USER_IDS or not context.user_data.get('admin_reply_mode'):
-        # Если не в режиме ответа, отправляем в основной обработчик
-        return await main_menu(update, context)
+    if user_id in ADMIN_USER_IDS and context.user_data.get('admin_reply_mode'):
+        return await handle_admin_reply_input(update, context)
     
-    # Если в режиме ответа, обрабатываем здесь
-    return await handle_admin_reply_input(update, context)
+    # Если не в режиме ответа, игнорируем - пусть обрабатывает ConversationHandler
+    return
 
 async def handle_show_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать все сообщения с пагинацией"""
@@ -1697,20 +1684,16 @@ async def handle_show_full_history(update: Update, context: ContextTypes.DEFAULT
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-async def handle_admin_back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик кнопки возврата в админ-меню"""
-    query = update.callback_query
-    await query.answer()
-    
+async def handle_admin_back_to_menu_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды возврата в главное меню для админов"""
     user_id = update.effective_user.id
     if user_id not in ADMIN_USER_IDS:
+        await update.message.reply_text("❌ Доступ запрещён")
         return
     
-    await query.edit_message_text(
-        "⚡ *Панель администратора Зеркала Судеб* ⚡\n\n"
-        "Выберите действие:",
-        parse_mode='Markdown',
-        reply_markup=admin_keyboard()
+    await update.message.reply_text(
+        "🌑 Возвращаюсь в главное меню...",
+        reply_markup=main_menu_keyboard()
     )
 
 async def handle_get_by_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1726,6 +1709,37 @@ def main():
     init_db()
     application = Application.builder().token(TOKEN).build()
 
+    # 🔥 ПЕРВЫМИ идут админские обработчики - они должны быть ДО ConversationHandler
+    application.add_handler(CommandHandler('admin', admin_command))
+    application.add_handler(CommandHandler("messages", handle_messages_list))
+    application.add_handler(CommandHandler("history", handle_messages_history))
+    application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
+
+    # 🔥 Обработчик админских кнопок в основном меню
+    application.add_handler(MessageHandler(
+        filters.TEXT & 
+        filters.User(ADMIN_USER_IDS) & 
+        filters.Regex('^(🎁 Добавить расклады ВСЕМ|👤 Добавить расклады пользователю|🔄 Обнулить счётчики бесплатных|📢 Сделать рассылку|📨 Просмотреть сообщения)$'),
+        handle_admin_actions
+    ))
+
+    # 🔥 Обработчик возврата в меню для админов
+    application.add_handler(MessageHandler(
+        filters.TEXT & 
+        filters.User(ADMIN_USER_IDS) & 
+        filters.Regex('^🏠 Главное меню$'),
+        handle_admin_back_to_menu_cmd
+    ))
+
+    # 🔥 Обработчик ответов админа на сообщения пользователей
+    application.add_handler(MessageHandler(
+        filters.TEXT & 
+        filters.User(ADMIN_USER_IDS) & 
+        ~filters.COMMAND,
+        handle_admin_reply_direct
+    ))
+
+    # ConversationHandler для основных состояний бота
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -1739,32 +1753,40 @@ def main():
         },
         fallbacks=[
             CommandHandler('cancel', cancel),
-            CommandHandler('admin', admin_command),
             MessageHandler(filters.TEXT & ~filters.COMMAND, global_fallback_handler)
         ],
         allow_reentry=True
     )
 
     application.add_handler(conv_handler)
-    application.add_handler(CommandHandler('admin', admin_command))
-    application.add_handler(CommandHandler("messages", handle_messages_list))
+    
+    # Обработчики платежей
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
+    
+    # Обработчики кнопок покупки
     application.add_handler(MessageHandler(filters.Regex('^🛍️ Купить расклады$'), buy_readings))
     application.add_handler(CallbackQueryHandler(button_buy_pack, pattern="^buy_pack_"))
+    
+    # Обработчики фидбека
     application.add_handler(CallbackQueryHandler(handle_feedback_button, pattern="^feedback_(yes|no)_"))
+    
+    # Обработчики истории раскладов
     application.add_handler(CallbackQueryHandler(show_full_reading, pattern="^full_reading_"))
+    
+    # Обработчики рефералов
     application.add_handler(CallbackQueryHandler(menu_invite_friend, pattern="^menu_invite_friend$"))
+    application.add_handler(CallbackQueryHandler(handle_get_by_referral, pattern="^get_by_referral$"))
+    
+    # 🔥 Обработчики админских callback-кнопок (сообщения)
     application.add_handler(CallbackQueryHandler(handle_quick_reply_button, pattern="^quick_reply_"))
     application.add_handler(CallbackQueryHandler(handle_show_all_messages, pattern="^show_all_messages$"))
     application.add_handler(CallbackQueryHandler(handle_show_all_messages, pattern="^show_new_messages$"))
     application.add_handler(CallbackQueryHandler(handle_show_full_history, pattern="^show_full_history$"))
     application.add_handler(CallbackQueryHandler(handle_admin_back_to_menu, pattern="^admin_back_to_menu$"))
-    application.add_handler(CallbackQueryHandler(handle_get_by_referral, pattern="^get_by_referral$"))
-    application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
-    application.add_handler(CommandHandler("history", handle_messages_history))
 
     # Запускаем бота
+    logger.info("Бот запущен и готов к работе!")
     application.run_polling()
 
 if __name__ == '__main__':
