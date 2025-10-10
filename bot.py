@@ -1736,11 +1736,6 @@ def main():
     init_db()
     application = Application.builder().token(TOKEN).build()
 
-    application.add_handler(MessageHandler(
-        filters.TEXT & filters.User(ADMIN_USER_IDS), 
-        handle_admin_reply_direct
-    ))
-
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -1761,6 +1756,10 @@ def main():
     )
 
     application.add_handler(conv_handler)
+    application.add_handler(MessageHandler(
+        filters.TEXT & filters.User(ADMIN_USER_IDS), 
+        handle_admin_reply_direct
+    ))
     application.add_handler(CommandHandler('admin', admin_command))
     application.add_handler(CommandHandler("messages", handle_messages_list))
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
