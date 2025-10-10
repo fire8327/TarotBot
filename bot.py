@@ -594,7 +594,56 @@ async def card_of_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.edit_text(TEXTS['card_flipping'], parse_mode='Markdown')
     await asyncio.sleep(1.0)
 
-    # ... остальная логика генерации карты ...
+    major_arcana = [
+        "Шут", "Маг", "Жрица", "Императрица", "Император", "Жрец", "Влюблённые",
+        "Колесница", "Сила", "Отшельник", "Колесо Фортуны", "Справедливость",
+        "Повешенный", "Смерть", "Умеренность", "Дьявол", "Башня", "Звезда",
+        "Луна", "Солнце", "Суд", "Мир"
+    ]
+
+    prompt = f"""
+    Ты — мудрый таролог. Выбери ОДНУ карту из Старших Арканов Таро для {user_name} и дай одно краткое послание (1-2 предложения).
+    Список Старших Арканов: {', '.join(major_arcana)}
+    Формат ответа:
+    🃏 [Название Карты] — [Послание]
+    Пример:
+    🃏 Колесо Фортуны — Сегодня удача на твоей стороне — не упусти шанс.
+    Только ответ в этом формате. Ничего лишнего.
+    """
+
+    try:
+        completion = client.chat.completions.create(
+            model="qwen/qwen-turbo",
+            messages=[
+                {"role": "system", "content": "Ты — таролог, использующий ТОЛЬКО Старшие Арканы. Ты всегда называешь конкретную карту и даёшь краткое послание."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=100
+        )
+        message = completion.choices[0].message.content.strip()
+
+        if not any(card in message for card in major_arcana) or not message.startswith("🃏"):
+            raise ValueError("ИИ не вернул карту в нужном формате")
+
+    except Exception as e:
+        logger.error(f"Ошибка в карте дня: {e}")
+        card = random.choice(major_arcana)
+        message = f"🃏 {card} — Вселенная молчит... но я знаю: доверься интуиции — сегодня она не подведёт."
+
+    await msg.edit_text(
+        TEXTS['card_of_day'].format(name=user_name, message=message), 
+        parse_mode='Markdown'
+    )
+    update_daily_card(user_id, message)
+
+    if context.job_queue:
+        context.job_queue.run_once(
+            send_feedback_request,
+            when=86400,
+            data={"user_id": user_id, "card_text": message},
+            name=f"feedback_{user_id}_{today}"
+        )
 
     await msg.edit_text(
         TEXTS['card_of_day'].format(name=user_name, message=message), 
