@@ -299,3 +299,15 @@ def update_message_status(message_id, status, admin_reply=None):
             """, (status, message_id))
         conn.commit()
     conn.close()
+
+def set_user_referrer(user_id: int, referrer_id: int):
+    """Устанавливает реферера для пользователя"""
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        cur.execute("""
+            UPDATE users 
+            SET referrer_id = %s 
+            WHERE user_id = %s AND referrer_id IS NULL
+        """, (referrer_id, user_id))
+    conn.commit()
+    conn.close()

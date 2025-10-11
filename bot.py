@@ -238,6 +238,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             referrer_id = int(context.args[0].replace('ref_', ''))
             if referrer_id == user_id:
                 referrer_id = None
+            else:
+                # Сохраняем реферера сразу
+                context.user_data['referrer_id'] = referrer_id
         except ValueError:
             referrer_id = None
 
@@ -254,9 +257,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return MAIN_MENU
     else:
-        if referrer_id:
-            context.user_data['referrer_id'] = referrer_id
-
         await update.message.reply_text(
             TEXTS['welcome'],
             parse_mode='Markdown',
@@ -268,13 +268,17 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_name = update.message.text
     update_user_name(user_id, user_name)
+    
     referrer_id = context.user_data.get('referrer_id')
     bonus_message = ""
     current_balance = get_user(user_id)['readings_balance']
-    update_user_balance(user_id, current_balance + 1)  # Бонус при регистрации остаётся
+    update_user_balance(user_id, current_balance + 1)  # Бонус при регистрации
     
     if referrer_id:
-        # Вызываем новую функцию для обработки приглашения
+        # Сохраняем реферера в БД
+        from db import set_user_referrer
+        set_user_referrer(user_id, referrer_id)
+        # Начисляем бонус
         await process_referral_bonus(update, context, user_id, user_name, referrer_id)
         bonus_message = (
             "\n\nP.S. Ты был приглашён другом — спасибо, что присоединился к кругу Зеркала!"
@@ -285,7 +289,7 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown',
         reply_markup=main_menu_keyboard()
     )
-    return MAIN_MENU  # Возвращаем MAIN_MENU, а не GET_NAME
+    return MAIN_MENU
 
 async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -674,15 +678,51 @@ async def invite_friend(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         return
 
-    bot_username = "speculora_bot"
+    bot_username = "speculora_bot"  # Убедитесь, что это правильный username бота
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
 
+    # Улучшенное сообщение с инструкцией
+    invite_text = """✨ *Твоя магическая ссылка готова!* ✨
+
+Отправь её подруге/другу — когда он/она зарегистрируется, ты получишь +1 бесплатный расклад 🌙
+
+*Как это работает:*
+1. Отправь ссылку другу
+2. Друг переходит по ссылке и регистрируется
+3. Ты получаешь +1 расклад за каждого 2-го приглашённого друга
+4. Твой друг тоже получает бонусный расклад!
+
+📎 *Твоя ссылка:*"""
+
     await send_method(
-        TEXTS['invite_friend'],
+        invite_text,
         parse_mode='Markdown',
         reply_markup=main_menu_keyboard()
     )
-    await send_method(ref_link, reply_markup=main_menu_keyboard())
+    await send_method(f"`{ref_link}`", parse_mode='Markdown')
+    
+    # Добавляем кнопку для быстрого копирования
+    keyboard = [
+        [InlineKeyboardButton("📤 Поделиться ссылкой", 
+                              url=f"https://t.me/share/url?url={ref_link}&text=Привет! Попробуй этого бота-таролога - очень интересные расклады! 🔮")],
+        [InlineKeyboardButton("📋 Скопировать ссылку", callback_data=f"copy_link_{ref_link}")]
+    ]
+    await send_method(
+        "Или используй кнопки ниже:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def handle_copy_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка кнопки копирования ссылки"""
+    query = update.callback_query
+    await query.answer()
+    
+    ref_link = query.data.replace('copy_link_', '')
+    # Можно показать сообщение, что ссылка готова для копирования
+    await query.message.reply_text(
+        f"Ссылка скопирована в буфер обмена! 🎉\n\n`{ref_link}`",
+        parse_mode='Markdown'
+    )
 
 async def menu_invite_friend(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1920,6 +1960,7 @@ def main():
     application.add_handler(CallbackQueryHandler(show_full_reading, pattern="^full_reading_"))
     
     # 6. Обработчики рефералов
+    application.add_handler(CallbackQueryHandler(handle_copy_link, pattern="^copy_link_"))
     application.add_handler(CallbackQueryHandler(menu_invite_friend, pattern="^menu_invite_friend$"))
     application.add_handler(CallbackQueryHandler(handle_get_by_referral, pattern="^get_by_referral$"))
     
