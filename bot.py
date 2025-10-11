@@ -34,7 +34,7 @@ TOKEN = os.getenv("TOKEN")
 ADMIN_USER_IDS = {780161853}
 
 # --- 🔑 КОНСТАНТЫ ДЛЯ БЫСТРОЙ НАСТРОЙКИ ---
-BOT_VERSION = "v1.15"  # <-- МЕНЯЙ ЭТУ ВЕРСИЮ ПРИ КАЖДОМ ДЕПЛОЕ
+BOT_VERSION = "v1.2"  # <-- МЕНЯЙ ЭТУ ВЕРСИЮ ПРИ КАЖДОМ ДЕПЛОЕ
 ACTIVE_USERS_DAYS = 7  # Рассылка обновления пользователям, активным за последние N дней
 STAR_PRICE_PER_READING = 50  # Цена одного расклада в ⭐
 REFERRAL_BONUS_READINGS = 1  # Сколько раскладов даём за приглашение
@@ -413,58 +413,50 @@ def fallback_reading(reading_type, user_name):
 Помни: карты показывают потенциал, а не стопроцентный результат. Ты держишь перо, которым пишешь свою судьбу.
 """
 
-async def process_referral_bonus(
-    update: Update, 
-    context: ContextTypes.DEFAULT_TYPE, 
-    user_id, 
-    user_name, 
-    referrer_id
-):
-    """Обработка бонуса за реферала для существующих пользователей (новая логика: 2 приглашения = 1 расклад)"""
+async def process_referral_bonus(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, user_name: str, referrer_id: int):
+    """Обработка бонуса за реферала - ПРОСТАЯ ВЕРСИЯ (1 приглашение = 1 расклад)"""
     try:
         referrer = get_user(referrer_id)
         if referrer and referrer.get('name'):
             # Увеличиваем счётчик приглашений
             increment_referral_count(referrer_id)
-            # Обновляем данные реферера, чтобы получить новый счётчик
+            
+            # Получаем обновленные данные
             referrer_updated = get_user(referrer_id)
             new_referral_count = referrer_updated['referral_count']
-
-            # Проверяем, набралось ли 2 приглашения
-            if new_referral_count % 2 == 0:
-                # Начисляем бонус
-                ref_balance = referrer_updated['readings_balance']
-                update_user_balance(referrer_id, ref_balance + REFERRAL_BONUS_READINGS)
-                # Сохраняем покупку/бонус
-                save_purchase(
-                    user_id=referrer_id,
-                    payload="referral_bonus_2",  # Новый тип бонуса
-                    readings=REFERRAL_BONUS_READINGS,
-                    price_stars=0,
-                    actual_amount=0,
-                    charge_id=f"ref2_{user_id}"  # Новый ID для отслеживания
-                )
-                bonus_message = (
-                    f"🎁 *Награда за приглашения!*\n"
-                    f"Ты пригласил 2 друзей — и за это получаешь +{REFERRAL_BONUS_READINGS} "
-                    f"бесплатный расклад! 🌙"
-                )
-            else:
-                # Бонус не начисляется, просто уведомляем о прогрессе
-                bonus_message = (
-                    f"👥 *Новый приглашённый!*\n"
-                    f"Твой друг {user_name} присоединился! "
-                    f"Приглашено: {new_referral_count}/2 до следующего расклада. 🌙"
-                )
-
+            
+            # 🔥 ПРОСТО: начисляем бонус за КАЖДОГО реферала
+            ref_balance = referrer_updated['readings_balance']
+            update_user_balance(referrer_id, ref_balance + REFERRAL_BONUS_READINGS)
+            
+            # Сохраняем в историю покупок
+            save_purchase(
+                user_id=referrer_id,
+                pack_id="referral_bonus",
+                readings=REFERRAL_BONUS_READINGS,
+                price_stars=0,
+                paid_amount=0,
+                charge_id=f"ref_{user_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            )
+            
+            bonus_message = (
+                f"🎁 *Новый бонус за приглашение!*\n"
+                f"Твой друг {user_name} присоединился к Зеркалу Судеб! 🌙\n\n"
+                f"✨ Ты получаешь +{REFERRAL_BONUS_READINGS} бесплатный расклад!\n"
+                f"📊 Всего приглашено друзей: {new_referral_count}\n"
+                f"🪄 Новый баланс: {ref_balance + REFERRAL_BONUS_READINGS} раскладов"
+            )
+            
             try:
                 await context.bot.send_message(
                     chat_id=referrer_id,
                     text=bonus_message,
                     parse_mode='Markdown'
                 )
+                logger.info(f"✅ Бонус начислен: {referrer_id} получил +{REFERRAL_BONUS_READINGS} за приглашение {user_id}")
             except Exception as e:
                 logger.warning(f"Не удалось отправить сообщение рефереру {referrer_id}: {e}")
+                
     except Exception as e:
         logger.error(f"Ошибка при обработке реферера {referrer_id} для пользователя {user_id}: {e}")
 
@@ -578,19 +570,18 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balance = user['readings_balance']
     total_used = user['total_used']
     
-    # --- НОВОЕ: Рассчитываем прогресс ---
     referral_count = user.get('referral_count', 0)
     
-    # Ограничиваем отображаемый прогресс значением 2, чтобы не было "3 / 2"
-    referral_progress = min(referral_count, 2)
+    # 🔥 ПРОСТО: убираем дробь "/2", показываем только общее количество
+    profile_text = f"""✨🔮 Ваша Личная Статистика Предсказаний 🔮✨
+Привет, {user_name}! 👋
+🪄 Доступно раскладов: {balance}
+🌌 Всего использовано: {total_used}
+👥 Приглашено друзей: {referral_count}
+🔮 Ты на пути к просветлению!
+Чем чаще ты гадаешь — тем яснее становится твоя судьба.
+👇 Выбери действие:"""
 
-    profile_text = TEXTS['profile'].format(
-        name=user_name,
-        balance=balance,
-        total_used=total_used,
-        referral_count=referral_progress
-
-    )
     reply_markup = profile_keyboard()
     await update.message.reply_text(profile_text, parse_mode='Markdown', reply_markup=reply_markup)
     return MAIN_MENU
@@ -678,18 +669,18 @@ async def invite_friend(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         return
 
-    bot_username = "speculora_bot"  # Убедитесь, что это правильный username бота
+    bot_username = "speculora_bot"
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
 
-    # Улучшенное сообщение с инструкцией
+    # 🔥 ПРОСТО: обновляем текст согласно новой логике
     invite_text = """✨ *Твоя магическая ссылка готова!* ✨
 
-Отправь её подруге/другу — когда он/она зарегистрируется, ты получишь +1 бесплатный расклад 🌙
+Отправь её подруге/другу — когда он/она зарегистрируется, ты получишь +1 бесплатный расклад! 🌙
 
 *Как это работает:*
 1. Отправь ссылку другу
 2. Друг переходит по ссылке и регистрируется
-3. Ты получаешь +1 расклад за каждого 2-го приглашённого друга
+3. Ты получаешь +1 расклад за КАЖДОГО приглашённого друга!
 4. Твой друг тоже получает бонусный расклад!
 
 📎 *Твоя ссылка:*"""
@@ -700,17 +691,6 @@ async def invite_friend(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_menu_keyboard()
     )
     await send_method(f"`{ref_link}`", parse_mode='Markdown')
-    
-    # Добавляем кнопку для быстрого копирования
-    keyboard = [
-        [InlineKeyboardButton("📤 Поделиться ссылкой", 
-                              url=f"https://t.me/share/url?url={ref_link}&text=Привет! Попробуй этого бота-таролога - очень интересные расклады! 🔮")],
-        [InlineKeyboardButton("📋 Скопировать ссылку", callback_data=f"copy_link_{ref_link}")]
-    ]
-    await send_method(
-        "Или используй кнопки ниже:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
 
 async def handle_copy_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка кнопки копирования ссылки"""
