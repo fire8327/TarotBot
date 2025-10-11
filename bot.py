@@ -68,7 +68,7 @@ TEXTS = {
 Привет, {name}! 👋
 🪄 Доступно раскладов: {balance}
 🌌 Всего использовано: {total_used}
-👥 Приглашено друзей: {referral_count}
+👥 {referral_count} / 2 до следующего расклада
 🔮 Ты на пути к просветлению!
 Чем чаще ты гадаешь — тем яснее становится твоя судьба.
 👇 Выбери действие:""",
@@ -269,51 +269,24 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_name = update.message.text
     update_user_name(user_id, user_name)
-
     referrer_id = context.user_data.get('referrer_id')
     bonus_message = ""
-
     current_balance = get_user(user_id)['readings_balance']
-    update_user_balance(user_id, current_balance + 1)
-
+    update_user_balance(user_id, current_balance + 1)  # Бонус при регистрации остаётся
+    
     if referrer_id:
-        try:
-            referrer = get_user(referrer_id)
-            if referrer and referrer.get('name'):
-                ref_balance = referrer['readings_balance']
-                update_user_balance(referrer_id, ref_balance + REFERRAL_BONUS_READINGS)
-                increment_referral_count(referrer_id)
-
-                save_purchase(
-                    user_id=referrer_id,
-                    payload="referral_bonus",
-                    readings=REFERRAL_BONUS_READINGS,
-                    price_stars=0,
-                    actual_amount=0,
-                    charge_id=f"ref_{user_id}"
-                )
-
-                try:
-                    await context.bot.send_message(
-                        chat_id=referrer_id,
-                        text=f"✨ *Твой друг {user_name} присоединился по твоей ссылке!*\n"
-                             f"В награду ты получаешь +{REFERRAL_BONUS_READINGS} бесплатный расклад. Всего приглашено: {referrer.get('referral_count', 0)}",
-                        parse_mode='Markdown'
-                    )
-                except Exception as e:
-                    logger.warning(f"Не удалось отправить сообщение рефереру {referrer_id}: {e}")
-
-                bonus_message = "\n\nP.S. Ты был приглашён другом — спасибо, что присоединился к Кругу Зеркала!"
-
-        except Exception as e:
-            logger.error(f"Ошибка при обработке реферера {referrer_id} для пользователя {user_id}: {e}")
-
+        # Вызываем новую функцию для обработки приглашения
+        await process_referral_bonus(update, context, user_id, user_name, referrer_id)
+        bonus_message = (
+            "\n\nP.S. Ты был приглашён другом — спасибо, что присоединился к кругу Зеркала!"
+        )
+    
     await update.message.reply_text(
         TEXTS['name_registered'].format(name=user_name, bonus_message=bonus_message),
         parse_mode='Markdown',
         reply_markup=main_menu_keyboard()
     )
-    return MAIN_MENU
+    return MAIN_MENU  # Возвращаем MAIN_MENU, а не GET_NAME
 
 async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -440,34 +413,58 @@ def fallback_reading(reading_type, user_name):
 Помни: карты показывают потенциал, а не стопроцентный результат. Ты держишь перо, которым пишешь свою судьбу.
 """
 
-async def process_referral_bonus(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id, user_name, referrer_id):
-    """Обработка бонуса за реферала для существующих пользователей"""
+async def process_referral_bonus(
+    update: Update, 
+    context: ContextTypes.DEFAULT_TYPE, 
+    user_id, 
+    user_name, 
+    referrer_id
+):
+    """Обработка бонуса за реферала для существующих пользователей (новая логика: 2 приглашения = 1 расклад)"""
     try:
         referrer = get_user(referrer_id)
         if referrer and referrer.get('name'):
-            ref_balance = referrer['readings_balance']
-            update_user_balance(referrer_id, ref_balance + REFERRAL_BONUS_READINGS)
+            # Увеличиваем счётчик приглашений
             increment_referral_count(referrer_id)
+            # Обновляем данные реферера, чтобы получить новый счётчик
+            referrer_updated = get_user(referrer_id)
+            new_referral_count = referrer_updated['referral_count']
 
-            save_purchase(
-                user_id=referrer_id,
-                payload="referral_bonus",
-                readings=REFERRAL_BONUS_READINGS,
-                price_stars=0,
-                actual_amount=0,
-                charge_id=f"ref_{user_id}"
-            )
+            # Проверяем, набралось ли 2 приглашения
+            if new_referral_count % 2 == 0:
+                # Начисляем бонус
+                ref_balance = referrer_updated['readings_balance']
+                update_user_balance(referrer_id, ref_balance + REFERRAL_BONUS_READINGS)
+                # Сохраняем покупку/бонус
+                save_purchase(
+                    user_id=referrer_id,
+                    payload="referral_bonus_2",  # Новый тип бонуса
+                    readings=REFERRAL_BONUS_READINGS,
+                    price_stars=0,
+                    actual_amount=0,
+                    charge_id=f"ref2_{user_id}"  # Новый ID для отслеживания
+                )
+                bonus_message = (
+                    f"🎁 *Награда за приглашения!*\n"
+                    f"Ты пригласил 2 друзей — и за это получаешь +{REFERRAL_BONUS_READINGS} "
+                    f"бесплатный расклад! 🌙"
+                )
+            else:
+                # Бонус не начисляется, просто уведомляем о прогрессе
+                bonus_message = (
+                    f"👥 *Новый приглашённый!*\n"
+                    f"Твой друг {user_name} присоединился! "
+                    f"Приглашено: {new_referral_count}/2 до следующего расклада. 🌙"
+                )
 
             try:
                 await context.bot.send_message(
                     chat_id=referrer_id,
-                    text=f"✨ *Твой друг {user_name} вернулся по твоей ссылке!*\n"
-                         f"В награду ты получаешь +{REFERRAL_BONUS_READINGS} бесплатный расклад. Всего приглашено: {referrer.get('referral_count', 0)}",
+                    text=bonus_message,
                     parse_mode='Markdown'
                 )
             except Exception as e:
                 logger.warning(f"Не удалось отправить сообщение рефереру {referrer_id}: {e}")
-
     except Exception as e:
         logger.error(f"Ошибка при обработке реферера {referrer_id} для пользователя {user_id}: {e}")
 
@@ -580,15 +577,20 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = user['name'] if user['name'] else "Искатель"
     balance = user['readings_balance']
     total_used = user['total_used']
+    
+    # --- НОВОЕ: Рассчитываем прогресс ---
     referral_count = user.get('referral_count', 0)
+    
+    # Ограничиваем отображаемый прогресс значением 2, чтобы не было "3 / 2"
+    referral_progress = min(referral_count, 2)
 
     profile_text = TEXTS['profile'].format(
         name=user_name,
         balance=balance,
         total_used=total_used,
-        referral_count=referral_count
+        referral_count=referral_progress
+
     )
-    
     reply_markup = profile_keyboard()
     await update.message.reply_text(profile_text, parse_mode='Markdown', reply_markup=reply_markup)
     return MAIN_MENU
