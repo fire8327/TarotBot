@@ -1087,12 +1087,12 @@ async def handle_user_feedback(update: Update, context: ContextTypes.DEFAULT_TYP
     return MAIN_MENU
 
 async def notify_admin_about_new_message(context: ContextTypes.DEFAULT_TYPE, user_id: int, user_name: str, message: str):
-    """Уведомление админа о новом сообщении"""
+    """Уведомление админа о новом сообщении - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+    # 🔥 СОХРАНЯЕМ СООБЩЕНИЕ ТОЛЬКО ОДИН РАЗ
+    message_id = save_user_message(user_id, user_name, message, 'feedback')
+    
     for admin_id in ADMIN_USER_IDS:
         try:
-            # Сохраняем ID сообщения для отслеживания
-            message_id = save_user_message(user_id, user_name, message, 'feedback')
-            
             # Создаем клавиатуру для быстрого ответа
             keyboard = [
                 [InlineKeyboardButton("💌 Ответить пользователю", callback_data=f"quick_reply_{user_id}_{message_id}")],
@@ -1116,10 +1116,16 @@ async def notify_admin_about_new_message(context: ContextTypes.DEFAULT_TYPE, use
             logger.error(f"❌ Не удалось уведомить админа {admin_id}: {str(e)}")
 
 async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка ввода ответа от админа"""
+    """Обработка ввода ответа от админа - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
     user_id = update.effective_user.id
     
-    logger.info(f"🔧 Обработка ответа админа. User: {user_id}, Text: {update.message.text}")
+    # Проверяем, что это админ и он в режиме ответа
+    if user_id not in ADMIN_USER_IDS or not context.user_data.get('admin_reply_mode'):
+        await update.message.reply_text(
+            "🌑 Я не понял твой знак... Выбери путь из меню.",
+            reply_markup=main_menu_keyboard()
+        )
+        return MAIN_MENU
     
     # Проверяем нажатие кнопки отмены
     if update.message.text == '❌ Отменить ответ':
@@ -1130,29 +1136,10 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
         context.user_data.clear()
         return MAIN_MENU
     
-    # Проверяем, что это админ и он в режиме ответа
-    if user_id not in ADMIN_USER_IDS:
-        await update.message.reply_text(
-            "🌑 Я не понял твой знак... Выбери путь из меню.",
-            reply_markup=main_menu_keyboard()
-        )
-        return MAIN_MENU
-        
-    if not context.user_data.get('admin_reply_mode'):
-        logger.warning(f"⚠️ Админ {user_id} не в режиме ответа, но пытается отправить сообщение")
-        await update.message.reply_text(
-            "🌑 Я не понял твой знак... Выбери путь из меню.",
-            reply_markup=main_menu_keyboard()
-        )
-        return MAIN_MENU
-    
     # Получаем текст ответа
     reply_text = update.message.text
     target_user_id = context.user_data.get('reply_to_user')
-    original_message_text = context.user_data.get('original_message_text', 'Неизвестное сообщение')
     original_message_id = context.user_data.get('original_message_id')
-    
-    logger.info(f"🔧 Отправка ответа пользователю {target_user_id}")
     
     if not target_user_id:
         await update.message.reply_text(
@@ -1163,6 +1150,13 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
         return MAIN_MENU
     
     try:
+        # Получаем информацию о пользователе
+        target_user = get_user(target_user_id)
+        target_user_name = target_user.get('name', 'Неизвестный')
+        
+        # Получаем оригинальное сообщение
+        original_message_text = context.user_data.get('original_message_text', 'Неизвестное сообщение')
+        
         # Форматируем ответ
         formatted_reply = f"""💌 *Ответ от разработчика*
 
@@ -1182,16 +1176,20 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
             parse_mode='Markdown'
         )
         
-        # Сохраняем в историю
-        target_user = get_user(target_user_id)
-        target_user_name = target_user.get('name', 'Неизвестный')
-        save_user_message(user_id, "Admin", f"Ответ для {target_user_name}: {reply_text}", "admin_reply")
+        # 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Сохраняем ТОЛЬКО ОДИН раз
+        # Сохраняем ответ админа
+        save_user_message(
+            user_id=user_id, 
+            user_name="Admin", 
+            message=f"Ответ для {target_user_name} (ID: {target_user_id}): {reply_text}", 
+            message_type="admin_reply"
+        )
         
-        # Помечаем исходное сообщение как отвеченное
+        # Помечаем исходное сообщение как отвеченное (если есть ID)
         if original_message_id:
             update_message_status(original_message_id, 'replied', reply_text)
         
-        # 🔥 ОБНОВЛЕНИЕ: Показываем обновленный список сообщений
+        # Показываем обновленный список сообщений
         messages = get_unread_messages()
         
         if not messages:
@@ -1204,9 +1202,9 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
         else:
             # Создаем клавиатуру с оставшимися сообщениями
             keyboard = []
-            for i, msg in enumerate(messages[:10]):
+            for msg in messages[:5]:
                 user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
-                button_text = f"💌 {user_name[:12]}..." if len(user_name) > 12 else f"💌 {user_name}"
+                button_text = f"💌 {user_name[:15]}..." if len(user_name) > 15 else f"💌 {user_name}"
                 
                 keyboard.append([InlineKeyboardButton(
                     button_text, 
@@ -1214,7 +1212,6 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
                 )])
             
             keyboard.append([InlineKeyboardButton("🔄 Обновить список", callback_data="show_all_messages")])
-            keyboard.append([InlineKeyboardButton("📋 Вся история", callback_data="show_full_history")])
             
             await update.message.reply_text(
                 f"✅ *Ответ успешно отправлен пользователю!*\n\n"
@@ -1232,7 +1229,7 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
             reply_markup=admin_keyboard()
         )
     
-    # Сбрасываем данные
+    # 🔥 ВАЖНО: Полностью очищаем данные
     context.user_data.clear()
     return MAIN_MENU
 
