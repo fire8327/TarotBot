@@ -1044,57 +1044,6 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return MAIN_MENU
 
-async def handle_admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка действий в админ-меню"""
-    user_id = update.effective_user.id
-    user_input = update.message.text
-    
-    if user_id not in ADMIN_USER_IDS:
-        await update.message.reply_text("🌑 Доступ запрещён.", reply_markup=main_menu_keyboard())
-        return MAIN_MENU
-    
-    if user_input == '🎁 Добавить расклады ВСЕМ':
-        add_readings_to_all_users(1)
-        users_count = len(get_all_users())
-        
-        await update.message.reply_text(
-            f"✅ *Успешно!*\n\n"
-            f"Добавлено по 1 раскладу всем пользователям.\n"
-            f"Всего пользователей: {users_count}",
-            parse_mode='Markdown',
-            reply_markup=admin_keyboard()
-        )
-        
-    elif user_input == '👤 Добавить расклады пользователю':
-        await update.message.reply_text(
-            "Введите ID пользователя, которому нужно добавить расклады:",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        # 🔥 ВОЗВРАЩАЕМ состояние для ожидания ID пользователя
-        return AWAITING_USER_ID
-        
-    elif user_input == '🔄 Обнулить счётчики бесплатных':
-        reset_free_readings_counter()
-        await update.message.reply_text(
-            "✅ Счётчики бесплатных раскладов обнулены для всех пользователей!",
-            reply_markup=admin_keyboard()
-        )
-        
-    elif user_input == '📢 Сделать рассылку':
-        await handle_update_broadcast(update, context)
-        
-    elif user_input == '📨 Просмотреть сообщения':
-        await handle_messages_list(update, context)
-        
-    elif user_input == '🏠 Главное меню':
-        await update.message.reply_text(
-            "Возвращаюсь в главное меню...",
-            reply_markup=main_menu_keyboard()
-        )
-    
-    # 🔥 ВСЕГДА возвращаем MAIN_MENU, кроме случаев когда нужно другое состояние
-    return MAIN_MENU
-
 async def handle_user_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user = get_user(user_id)
@@ -1803,6 +1752,30 @@ async def main_menu_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     user = get_user(user_id)
     user_name = user['name'] if user['name'] else "Искатель"
+
+    if (user_id in ADMIN_USER_IDS and 
+        context.user_data.get('awaiting_broadcast_confirmation')):
+        
+        if user_input == '✅ Да, сделать рассылку':
+            # Очищаем флаг подтверждения
+            context.user_data.pop('awaiting_broadcast_confirmation', None)
+            # Запускаем рассылку
+            await handle_update_broadcast(update, context)
+            # Возвращаем админскую клавиатуру
+            await update.message.reply_text(
+                "Возвращаюсь в админ-меню...",
+                reply_markup=admin_keyboard()
+            )
+            return MAIN_MENU
+            
+        elif user_input == '❌ Нет, отменить':
+            # Очищаем флаг подтверждения
+            context.user_data.pop('awaiting_broadcast_confirmation', None)
+            await update.message.reply_text(
+                "❌ Рассылка отменена.",
+                reply_markup=admin_keyboard()
+            )
+            return MAIN_MENU
     
     # 🔥 ПЕРВЫМ ДЕЛОМ проверяем админские кнопки
     if user_id in ADMIN_USER_IDS:
@@ -1895,8 +1868,25 @@ async def admin_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MAIN_MENU  # 🔥 ВАЖНО: возвращаем состояние
         
     elif user_input == '📢 Сделать рассылку':
-        await handle_update_broadcast(update, context)
-        return MAIN_MENU  # 🔥 ВАЖНО: возвращаем состояние
+        # 🔥 ПОДТВЕРЖДЕНИЕ ПЕРЕД РАССЫЛКОЙ (оставляем только здесь)
+        keyboard = [
+            ['✅ Да, сделать рассылку'],
+            ['❌ Нет, отменить']
+        ]
+        await update.message.reply_text(
+            "⚠️ *ПОДТВЕРЖДЕНИЕ РАССЫЛКИ*\n\n"
+            "Вы собираетесь отправить рассылку ВСЕМ пользователям бота.\n\n"
+            "📊 *Что будет сделано:*\n"
+            "• Каждый пользователь получит +1 бесплатный расклад\n"
+            "• Будет отправлено сообщение об обновлениях\n"
+            "• Рассылка займет несколько минут\n\n"
+            "❓ *Подтверждаете рассылку?*",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
+        # Сохраняем состояние для обработки подтверждения
+        context.user_data['awaiting_broadcast_confirmation'] = True
+        return MAIN_MENU
         
     elif user_input == '📨 Просмотреть сообщения':
         await handle_messages_list(update, context)
