@@ -241,16 +241,17 @@ def reset_free_readings_counter():
     conn.commit()
     conn.close()
 
-def save_user_message(user_id, user_name, message_text, message_type='feedback'):
+def save_user_message(user_id: int, user_name: str, message: str):
+    """Сохраняет сообщение пользователя в базу данных"""
     conn = get_db_connection()
     with conn.cursor() as cur:
         cur.execute("""
-            INSERT INTO user_messages (user_id, user_name, message_text, message_type, status)
-            VALUES (%s, %s, %s, %s, 'new')
+            INSERT INTO user_messages (user_id, user_name, message_text, status, created_at)
+            VALUES (%s, %s, %s, 'new', NOW())
             RETURNING id
-        """, (user_id, user_name, message_text, message_type))
+        """, (user_id, user_name, message))
         message_id = cur.fetchone()['id']
-        conn.commit()
+    conn.commit()
     conn.close()
     return message_id
 
