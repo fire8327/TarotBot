@@ -1176,13 +1176,6 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
             parse_mode='Markdown'
         )
         
-        # 🔥 ИСПРАВЛЕНИЕ: Используем правильные параметры для save_user_message
-        save_user_message(
-            user_id=user_id, 
-            user_name="Admin", 
-            message=f"Ответ для {target_user_name} (ID: {target_user_id}): {reply_text}"
-            # Убрали message_type, если его нет в функции
-        )
         
         # Помечаем исходное сообщение как отвеченное (если есть ID)
         if original_message_id:
