@@ -1718,19 +1718,75 @@ async def handle_get_by_referral(update: Update, context: ContextTypes.DEFAULT_T
 async def main_menu_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Фолбэк для возврата в главное меню"""
     user_id = update.message.from_user.id
+    user_input = update.message.text
     user = get_user(user_id)
     user_name = user['name'] if user['name'] else "Искатель"
     
-    await update.message.reply_text(
-        f"🌑 Возвращаюсь в главное меню, {user_name}...",
-        reply_markup=main_menu_keyboard()
-    )
-    return MAIN_MENU
+    # 🔥 ПЕРВЫМ ДЕЛОМ проверяем админские кнопки
+    if user_id in ADMIN_USER_IDS:
+        if user_input in ['🎁 Добавить расклады ВСЕМ', '👤 Добавить расклады пользователю', 
+                         '🔄 Обнулить счётчики бесплатных', '📢 Сделать рассылку', 
+                         '📨 Просмотреть сообщения', '🏠 Главное меню']:
+            return await admin_main_menu(update, context)
+    
+    # Если не админ или не админская кнопка, обрабатываем как обычного пользователя
+    if user_input == '⭐ Мой профиль':
+        await show_profile(update, context)
+        return MAIN_MENU
+    elif user_input == '📜 О боте':
+        await about_command(update, context)
+        return MAIN_MENU
+    elif user_input == '🃏 Карта дня':
+        await card_of_day(update, context)
+        return MAIN_MENU
+    elif user_input == '🔮 Сделать расклад':
+        await update.message.reply_text(
+            TEXTS['reading_types'],
+            parse_mode='Markdown',
+            reply_markup=reading_type_keyboard()
+        )
+        return AWAITING_READING_TYPE
+    elif user_input == '🤝 Пригласить друга':
+        await invite_friend(update, context)
+        return MAIN_MENU
+    elif user_input == '🛍️ Купить расклады':
+        await buy_readings(update, context)
+        return MAIN_MENU
+    elif user_input == '📜 Мои последние расклады':
+        await show_reading_history(update, context)
+        return MAIN_MENU
+    elif user_input == '🏠 Главное меню':
+        await update.message.reply_text(
+            "🌑 Возвращаюсь в Зал Зеркал...",
+            reply_markup=main_menu_keyboard()
+        )
+        return MAIN_MENU
+    elif user_input == '📞 Обратная связь':
+        await update.message.reply_text(
+            "📝 *Напиши своё сообщение*\n\n"
+            "Здесь ты можешь:\n"
+            "• Задать вопрос по работе бота\n"
+            "• Сообщить об ошибке\n"
+            "• Предложить улучшение\n"
+            "• Написать отзыв\n\n"
+            "Просто напиши своё сообщение, и я передам его разработчику!",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([['❌ Отменить']], resize_keyboard=True)
+        )
+        return AWAITING_FEEDBACK
+    else:
+        await update.message.reply_text(
+            TEXTS['unknown_command'],
+            reply_markup=main_menu_keyboard()
+        )
+        return MAIN_MENU
 
 async def admin_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Главное меню для админов"""
     user_id = update.effective_user.id
     user_input = update.message.text
+    
+    logger.info(f"🔧 Админское меню: {user_input} от пользователя {user_id}")
     
     if user_id not in ADMIN_USER_IDS:
         await update.message.reply_text("🌑 Доступ запрещён.", reply_markup=main_menu_keyboard())
@@ -1745,21 +1801,35 @@ async def admin_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown',
             reply_markup=admin_keyboard()
         )
+        return MAIN_MENU  # 🔥 ВАЖНО: возвращаем состояние
+        
     elif user_input == '👤 Добавить расклады пользователю':
         await update.message.reply_text("Введите ID пользователя:", reply_markup=ReplyKeyboardRemove())
-        return AWAITING_USER_ID
+        return AWAITING_USER_ID  # 🔥 ВАЖНО: возвращаем состояние
+        
     elif user_input == '🔄 Обнулить счётчики бесплатных':
         reset_free_readings_counter()
         await update.message.reply_text("✅ Счётчики обнулены!", reply_markup=admin_keyboard())
+        return MAIN_MENU  # 🔥 ВАЖНО: возвращаем состояние
+        
     elif user_input == '📢 Сделать рассылку':
         await handle_update_broadcast(update, context)
+        return MAIN_MENU  # 🔥 ВАЖНО: возвращаем состояние
+        
     elif user_input == '📨 Просмотреть сообщения':
         await handle_messages_list(update, context)
+        return MAIN_MENU  # 🔥 ВАЖНО: возвращаем состояние
+        
     elif user_input == '🏠 Главное меню':
         await update.message.reply_text("Возвращаюсь в главное меню...", reply_markup=main_menu_keyboard())
-        return MAIN_MENU
+        return MAIN_MENU  # 🔥 ВАЖНО: возвращаем состояние
     
-    return ConversationHandler.END
+    # Если кнопка не распознана
+    await update.message.reply_text(
+        "🌑 Неизвестная команда.",
+        reply_markup=admin_keyboard()
+    )
+    return MAIN_MENU
 
 # --- 🏁 ЗАПУСК БОТА ---
 def main():
@@ -1771,10 +1841,7 @@ def main():
         entry_points=[CommandHandler('start', start)],
         states={
             GET_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
-            MAIN_MENU: [
-                MessageHandler(filters.Regex('^(⭐ Мой профиль|📜 О боте|🃏 Карта дня|🔮 Сделать расклад|🤝 Пригласить друга|📞 Обратная связь)$'), main_menu),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu_fallback)
-            ],
+            MAIN_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu_fallback)],
             AWAITING_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_question)],
             AWAITING_READING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_reading_type_selection)],
             AWAITING_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_id_input)],
@@ -1813,12 +1880,6 @@ def main():
     application.add_handler(CommandHandler("messages", handle_messages_list))
     application.add_handler(CommandHandler("history", handle_messages_history))
     application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
-
-    application.add_handler(MessageHandler(
-        filters.TEXT & filters.User(ADMIN_USER_IDS) & 
-        filters.Regex('^(🎁 Добавить расклады ВСЕМ|👤 Добавить расклады пользователю|🔄 Обнулить счётчики бесплатных|📢 Сделать рассылку|📨 Просмотреть сообщения|🏠 Главное меню)$'),
-        admin_main_menu
-    ))
     
     # 8. Обработчики админских callback-кнопок (сообщения)
     application.add_handler(CallbackQueryHandler(handle_quick_reply_button, pattern="^quick_reply_"))
