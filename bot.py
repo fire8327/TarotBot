@@ -1706,6 +1706,18 @@ async def handle_get_by_referral(update: Update, context: ContextTypes.DEFAULT_T
     # Просто вызываем функцию приглашения друга
     await invite_friend(update, context)
 
+async def main_menu_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Фолбэк для возврата в главное меню"""
+    user_id = update.message.from_user.id
+    user = get_user(user_id)
+    user_name = user['name'] if user['name'] else "Искатель"
+    
+    await update.message.reply_text(
+        f"🌑 Возвращаюсь в главное меню, {user_name}...",
+        reply_markup=main_menu_keyboard()
+    )
+    return MAIN_MENU
+
 # --- 🏁 ЗАПУСК БОТА ---
 def main():
     init_db()
@@ -1746,7 +1758,10 @@ def main():
         entry_points=[CommandHandler('start', start)],
         states={
             GET_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
-            MAIN_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu)],
+            MAIN_MENU: [
+                MessageHandler(filters.Regex('^(⭐ Мой профиль|📜 О боте|🃏 Карта дня|🔮 Сделать расклад|🤝 Пригласить друга|🛍️ Купить расклады|📜 Мои последние расклады|🏠 Главное меню|📞 Обратная связь)$'), main_menu),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu_fallback)  # Фолбэк для любого текста
+            ],
             AWAITING_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_question)],
             AWAITING_READING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_reading_type_selection)],
             AWAITING_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_id_input)],
