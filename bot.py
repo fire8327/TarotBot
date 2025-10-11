@@ -1089,7 +1089,7 @@ async def handle_user_feedback(update: Update, context: ContextTypes.DEFAULT_TYP
 async def notify_admin_about_new_message(context: ContextTypes.DEFAULT_TYPE, user_id: int, user_name: str, message: str):
     """Уведомление админа о новом сообщении - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
     # 🔥 СОХРАНЯЕМ СООБЩЕНИЕ ТОЛЬКО ОДИН РАЗ
-    message_id = save_user_message(user_id, user_name, message, 'feedback')
+    message_id = save_user_message(user_id, user_name, message)
     
     for admin_id in ADMIN_USER_IDS:
         try:
@@ -1176,13 +1176,12 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
             parse_mode='Markdown'
         )
         
-        # 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Сохраняем ТОЛЬКО ОДИН раз
-        # Сохраняем ответ админа
+        # 🔥 ИСПРАВЛЕНИЕ: Используем правильные параметры для save_user_message
         save_user_message(
             user_id=user_id, 
             user_name="Admin", 
-            message=f"Ответ для {target_user_name} (ID: {target_user_id}): {reply_text}", 
-            message_type="admin_reply"
+            message=f"Ответ для {target_user_name} (ID: {target_user_id}): {reply_text}"
+            # Убрали message_type, если его нет в функции
         )
         
         # Помечаем исходное сообщение как отвеченное (если есть ID)
