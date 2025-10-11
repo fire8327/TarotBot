@@ -1115,17 +1115,20 @@ async def notify_admin_about_new_message(context: ContextTypes.DEFAULT_TYPE, use
         except Exception as e:
             logger.error(f"❌ Не удалось уведомить админа {admin_id}: {str(e)}")
 
+
 async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ввода ответа от админа"""
     user_id = update.effective_user.id
     
     logger.info(f"🔧 Обработка ответа админа. User: {user_id}, Text: {update.message.text}")
+    logger.info(f"🔧 Контекст данные: {context.user_data}")
+    logger.info(f"🔧 Текущее состояние: AWAITING_ADMIN_REPLY")
     
     # Проверяем нажатие кнопки отмены
     if update.message.text == '❌ Отменить ответ':
         await update.message.reply_text(
             "❌ Ответ отменён. Возвращаюсь в главное меню.",
-            reply_markup=main_menu_keyboard()
+            reply_markup=admin_keyboard()
         )
         context.user_data.clear()
         return MAIN_MENU
@@ -1157,7 +1160,7 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
     if not target_user_id:
         await update.message.reply_text(
             "❌ Ошибка: не найден пользователь для ответа",
-            reply_markup=main_menu_keyboard()
+            reply_markup=admin_keyboard()
         )
         context.user_data.clear()
         return MAIN_MENU
@@ -1194,7 +1197,7 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text(
             "✅ *Ответ успешно отправлен пользователю!*",
             parse_mode='Markdown',
-            reply_markup=admin_keyboard()  # Возвращаем админ-клавиатуру
+            reply_markup=admin_keyboard()
         )
         
         logger.info(f"✅ Ответ админа {user_id} отправлен пользователю {target_user_id}")
@@ -1203,7 +1206,7 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
         logger.error(f"❌ Ошибка отправки ответа пользователю {target_user_id}: {e}")
         await update.message.reply_text(
             f"❌ Ошибка отправки: {str(e)}",
-            reply_markup=main_menu_keyboard()
+            reply_markup=admin_keyboard()
         )
     
     # Сбрасываем данные
@@ -1511,14 +1514,15 @@ async def handle_quick_reply_button(update: Update, context: ContextTypes.DEFAUL
     # Создаем клавиатуру с кнопкой отмены
     cancel_keyboard = ReplyKeyboardMarkup([['❌ Отменить ответ']], resize_keyboard=True)
     
-    # 🔥 ВАЖНО: Используем query.message.reply_text вместо query.edit_message_text
-    await query.message.reply_text(
-        f"💌 *РЕЖИМ ОТВЕТА АДМИНА*\n\n"
-        f"👤 *Пользователь:* {target_user_name}\n"
-        f"🆔 *ID:* {target_user_id}\n\n"
-        f"*Оригинальное сообщение:*\n{original_message_text}\n\n"
-        f"👇 *Введите ваш ответ ниже:*\n\n"
-        f"ℹ️ Для отмены нажмите кнопку '❌ Отменить ответ'",
+    # 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Используем context.bot.send_message вместо query.message.reply_text
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=f"💌 *РЕЖИМ ОТВЕТА АДМИНА*\n\n"
+             f"👤 *Пользователь:* {target_user_name}\n"
+             f"🆔 *ID:* {target_user_id}\n\n"
+             f"*Оригинальное сообщение:*\n{original_message_text}\n\n"
+             f"👇 *Введите ваш ответ ниже:*\n\n"
+             f"ℹ️ Для отмены нажмите кнопку '❌ Отменить ответ'",
         parse_mode='Markdown',
         reply_markup=cancel_keyboard
     )
@@ -1719,6 +1723,12 @@ async def main_menu_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Фолбэк для возврата в главное меню"""
     user_id = update.message.from_user.id
     user_input = update.message.text
+    
+    # 🔥 ВАЖНО: Если админ в режиме ответа, пропускаем обычную обработку
+    if user_id in ADMIN_USER_IDS and context.user_data.get('admin_reply_mode'):
+        # Позволяем ConversationHandler обработать это сообщение
+        return await handle_admin_reply_input(update, context)
+    
     user = get_user(user_id)
     user_name = user['name'] if user['name'] else "Искатель"
     
@@ -1831,6 +1841,7 @@ async def admin_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return MAIN_MENU
 
+
 # --- 🏁 ЗАПУСК БОТА ---
 def main():
     init_db()
@@ -1880,10 +1891,6 @@ def main():
     application.add_handler(CommandHandler("messages", handle_messages_list))
     application.add_handler(CommandHandler("history", handle_messages_history))
     application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
-    application.add_handler(MessageHandler(
-        filters.TEXT & filters.User(ADMIN_USER_IDS) & ~filters.COMMAND, 
-        handle_admin_reply_direct
-    ))
     
     # 8. Обработчики админских callback-кнопок (сообщения)
     application.add_handler(CallbackQueryHandler(handle_quick_reply_button, pattern="^quick_reply_"))
