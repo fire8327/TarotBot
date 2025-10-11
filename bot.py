@@ -1809,6 +1809,11 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_get_by_referral, pattern="^get_by_referral$"))
     
     # 7. 🔥 АДМИНСКИЕ ОБРАБОТЧИКИ - ПОСЛЕДНИМИ
+    application.add_handler(CommandHandler('admin', admin_command))
+    application.add_handler(CommandHandler("messages", handle_messages_list))
+    application.add_handler(CommandHandler("history", handle_messages_history))
+    application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
+
     application.add_handler(MessageHandler(
         filters.TEXT & filters.User(ADMIN_USER_IDS) & 
         filters.Regex('^(🎁 Добавить расклады ВСЕМ|👤 Добавить расклады пользователю|🔄 Обнулить счётчики бесплатных|📢 Сделать рассылку|📨 Просмотреть сообщения|🏠 Главное меню)$'),
