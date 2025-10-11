@@ -294,9 +294,6 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     update_user_last_active(user_id)
 
-    # 🔥 УБРАНО: админская логика - она теперь в отдельном обработчике
-    # Просто обрабатываем обычные команды пользователя
-
     if user_input == '⭐ Мой профиль':
         await show_profile(update, context)
         return MAIN_MENU
@@ -1722,6 +1719,8 @@ async def main_menu_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 def main():
     init_db()
     application = Application.builder().token(TOKEN).build()
+    
+    application.add_handler(conv_handler)
 
     # 🔥 ПЕРВЫМИ идут админские обработчики - они должны быть ДО ConversationHandler
     application.add_handler(CommandHandler('admin', admin_command))
@@ -1774,8 +1773,6 @@ def main():
         ],
         allow_reentry=True
     )
-
-    application.add_handler(conv_handler)
     
     # Обработчики платежей
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
