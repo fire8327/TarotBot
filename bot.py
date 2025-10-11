@@ -1727,6 +1727,40 @@ async def main_menu_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
     return MAIN_MENU
 
+async def admin_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Главное меню для админов"""
+    user_id = update.effective_user.id
+    user_input = update.message.text
+    
+    if user_id not in ADMIN_USER_IDS:
+        await update.message.reply_text("🌑 Доступ запрещён.", reply_markup=main_menu_keyboard())
+        return MAIN_MENU
+    
+    # Обработка админских кнопок
+    if user_input == '🎁 Добавить расклады ВСЕМ':
+        add_readings_to_all_users(1)
+        users_count = len(get_all_users())
+        await update.message.reply_text(
+            f"✅ *Успешно!*\n\nДобавлено по 1 раскладу всем пользователям.\nВсего пользователей: {users_count}",
+            parse_mode='Markdown',
+            reply_markup=admin_keyboard()
+        )
+    elif user_input == '👤 Добавить расклады пользователю':
+        await update.message.reply_text("Введите ID пользователя:", reply_markup=ReplyKeyboardRemove())
+        return AWAITING_USER_ID
+    elif user_input == '🔄 Обнулить счётчики бесплатных':
+        reset_free_readings_counter()
+        await update.message.reply_text("✅ Счётчики обнулены!", reply_markup=admin_keyboard())
+    elif user_input == '📢 Сделать рассылку':
+        await handle_update_broadcast(update, context)
+    elif user_input == '📨 Просмотреть сообщения':
+        await handle_messages_list(update, context)
+    elif user_input == '🏠 Главное меню':
+        await update.message.reply_text("Возвращаюсь в главное меню...", reply_markup=main_menu_keyboard())
+        return MAIN_MENU
+    
+    return ConversationHandler.END
+
 # --- 🏁 ЗАПУСК БОТА ---
 def main():
     init_db()
@@ -1775,25 +1809,10 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_get_by_referral, pattern="^get_by_referral$"))
     
     # 7. 🔥 АДМИНСКИЕ ОБРАБОТЧИКИ - ПОСЛЕДНИМИ
-    application.add_handler(CommandHandler('admin', admin_command))
-    application.add_handler(CommandHandler("messages", handle_messages_list))
-    application.add_handler(CommandHandler("history", handle_messages_history))
-    application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
-
-    # Админские кнопки в меню
     application.add_handler(MessageHandler(
-        filters.TEXT & 
-        filters.User(ADMIN_USER_IDS) & 
-        filters.Regex('^(🎁 Добавить расклады ВСЕМ|👤 Добавить расклады пользователю|🔄 Обнулить счётчики бесплатных|📢 Сделать рассылку|📨 Просмотреть сообщения)$'),
-        handle_admin_actions
-    ))
-
-    # Обработчик возврата в меню для админов
-    application.add_handler(MessageHandler(
-        filters.TEXT & 
-        filters.User(ADMIN_USER_IDS) & 
-        filters.Regex('^🏠 Главное меню$'),
-        handle_admin_back_to_menu_cmd
+        filters.TEXT & filters.User(ADMIN_USER_IDS) & 
+        filters.Regex('^(🎁 Добавить расклады ВСЕМ|👤 Добавить расклады пользователю|🔄 Обнулить счётчики бесплатных|📢 Сделать рассылку|📨 Просмотреть сообщения|🏠 Главное меню)$'),
+        admin_main_menu
     ))
     
     # 8. Обработчики админских callback-кнопок (сообщения)
