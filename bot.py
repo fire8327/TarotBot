@@ -1531,11 +1531,11 @@ async def handle_admin_reply_direct(update: Update, context: ContextTypes.DEFAUL
     user_id = update.effective_user.id
     
     # Проверяем, что админ в режиме ответа
-    if user_id in ADMIN_USER_IDS and context.user_data.get('admin_reply_mode'):
+    if context.user_data.get('admin_reply_mode'):
         return await handle_admin_reply_input(update, context)
-    
-    # Если не в режиме ответа, игнорируем - пусть обрабатывает ConversationHandler
-    return
+    else:
+        # Если не в режиме ответа, передаем обработку ConversationHandler
+        return
 
 async def handle_show_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать все сообщения с пагинацией"""
@@ -1880,6 +1880,10 @@ def main():
     application.add_handler(CommandHandler("messages", handle_messages_list))
     application.add_handler(CommandHandler("history", handle_messages_history))
     application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
+    application.add_handler(MessageHandler(
+        filters.TEXT & filters.User(ADMIN_USER_IDS) & ~filters.COMMAND, 
+        handle_admin_reply_direct
+    ))
     
     # 8. Обработчики админских callback-кнопок (сообщения)
     application.add_handler(CallbackQueryHandler(handle_quick_reply_button, pattern="^quick_reply_"))
