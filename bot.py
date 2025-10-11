@@ -1719,47 +1719,15 @@ async def main_menu_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 def main():
     init_db()
     application = Application.builder().token(TOKEN).build()
-    
-    application.add_handler(conv_handler)
 
-    # 🔥 ПЕРВЫМИ идут админские обработчики - они должны быть ДО ConversationHandler
-    application.add_handler(CommandHandler('admin', admin_command))
-    application.add_handler(CommandHandler("messages", handle_messages_list))
-    application.add_handler(CommandHandler("history", handle_messages_history))
-    application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
-
-    # 🔥 Обработчик админских кнопок в основном меню
-    application.add_handler(MessageHandler(
-        filters.TEXT & 
-        filters.User(ADMIN_USER_IDS) & 
-        filters.Regex('^(🎁 Добавить расклады ВСЕМ|👤 Добавить расклады пользователю|🔄 Обнулить счётчики бесплатных|📢 Сделать рассылку|📨 Просмотреть сообщения)$'),
-        handle_admin_actions
-    ))
-
-    # 🔥 Обработчик возврата в меню для админов
-    application.add_handler(MessageHandler(
-        filters.TEXT & 
-        filters.User(ADMIN_USER_IDS) & 
-        filters.Regex('^🏠 Главное меню$'),
-        handle_admin_back_to_menu_cmd
-    ))
-
-    # 🔥 Обработчик ответов админа на сообщения пользователей
-    application.add_handler(MessageHandler(
-        filters.TEXT & 
-        filters.User(ADMIN_USER_IDS) & 
-        ~filters.COMMAND,
-        handle_admin_reply_direct
-    ))
-
-    # ConversationHandler для основных состояний бота
+    # 1. Сначала ConversationHandler - ОСНОВНОЙ обработчик
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
             GET_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
             MAIN_MENU: [
-                MessageHandler(filters.Regex('^(⭐ Мой профиль|📜 О боте|🃏 Карта дня|🔮 Сделать расклад|🤝 Пригласить друга|🛍️ Купить расклады|📜 Мои последние расклады|🏠 Главное меню|📞 Обратная связь)$'), main_menu),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu_fallback)  # Фолбэк для любого текста
+                MessageHandler(filters.Regex('^(⭐ Мой профиль|📜 О боте|🃏 Карта дня|🔮 Сделать расклад|🤝 Пригласить друга|📞 Обратная связь)$'), main_menu),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu_fallback)
             ],
             AWAITING_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_question)],
             AWAITING_READING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_reading_type_selection)],
@@ -1773,29 +1741,52 @@ def main():
         ],
         allow_reentry=True
     )
+
+    application.add_handler(conv_handler)
     
-    # Обработчики платежей
+    # 2. Затем обработчики платежей
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     
-    # Обработчики кнопок покупки
+    # 3. Обработчики кнопок покупки
     application.add_handler(MessageHandler(filters.Regex('^🛍️ Купить расклады$'), buy_readings))
     application.add_handler(CallbackQueryHandler(button_buy_pack, pattern="^buy_pack_"))
     
-    # Обработчики фидбека
+    # 4. Обработчики фидбека
     application.add_handler(CallbackQueryHandler(handle_feedback_button, pattern="^feedback_(yes|no)_"))
     
-    # Обработчики истории раскладов
+    # 5. Обработчики истории раскладов
     application.add_handler(CallbackQueryHandler(show_full_reading, pattern="^full_reading_"))
     
-    # Обработчики рефералов
+    # 6. Обработчики рефералов
     application.add_handler(CallbackQueryHandler(menu_invite_friend, pattern="^menu_invite_friend$"))
     application.add_handler(CallbackQueryHandler(handle_get_by_referral, pattern="^get_by_referral$"))
     
-    # 🔥 Обработчики админских callback-кнопок (сообщения)
+    # 7. 🔥 АДМИНСКИЕ ОБРАБОТЧИКИ - ПОСЛЕДНИМИ
+    application.add_handler(CommandHandler('admin', admin_command))
+    application.add_handler(CommandHandler("messages", handle_messages_list))
+    application.add_handler(CommandHandler("history", handle_messages_history))
+    application.add_handler(CommandHandler("update_broadcast", handle_update_broadcast))
+
+    # Админские кнопки в меню
+    application.add_handler(MessageHandler(
+        filters.TEXT & 
+        filters.User(ADMIN_USER_IDS) & 
+        filters.Regex('^(🎁 Добавить расклады ВСЕМ|👤 Добавить расклады пользователю|🔄 Обнулить счётчики бесплатных|📢 Сделать рассылку|📨 Просмотреть сообщения)$'),
+        handle_admin_actions
+    ))
+
+    # Обработчик возврата в меню для админов
+    application.add_handler(MessageHandler(
+        filters.TEXT & 
+        filters.User(ADMIN_USER_IDS) & 
+        filters.Regex('^🏠 Главное меню$'),
+        handle_admin_back_to_menu_cmd
+    ))
+    
+    # 8. Обработчики админских callback-кнопок (сообщения)
     application.add_handler(CallbackQueryHandler(handle_quick_reply_button, pattern="^quick_reply_"))
     application.add_handler(CallbackQueryHandler(handle_show_all_messages, pattern="^show_all_messages$"))
-    application.add_handler(CallbackQueryHandler(handle_show_all_messages, pattern="^show_new_messages$"))
     application.add_handler(CallbackQueryHandler(handle_show_full_history, pattern="^show_full_history$"))
     application.add_handler(CallbackQueryHandler(handle_admin_back_to_menu_cmd, pattern="^admin_back_to_menu$"))
 
