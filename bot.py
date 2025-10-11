@@ -1780,14 +1780,6 @@ def main():
         filters.Regex('^🏠 Главное меню$'),
         handle_admin_back_to_menu_cmd
     ))
-
-    # Обработчик ответа
-    application.add_handler(MessageHandler(
-        filters.TEXT & 
-        filters.User(ADMIN_USER_IDS) & 
-        ~filters.COMMAND,
-        handle_admin_reply_direct
-    ))
     
     # 8. Обработчики админских callback-кнопок (сообщения)
     application.add_handler(CallbackQueryHandler(handle_quick_reply_button, pattern="^quick_reply_"))
