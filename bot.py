@@ -47,8 +47,7 @@ PACKAGES = {
 }
 
 # --- Состояния диалога ---
-# В состояния добавьте:
-GET_NAME, MAIN_MENU, CONFIRM_READING, AWAITING_QUESTION, AWAITING_READING_TYPE, AWAITING_USER_ID, AWAITING_FEEDBACK, ADMIN_REPLY, AWAITING_ADMIN_REPLY = range(9)
+GET_NAME, MAIN_MENU, CONFIRM_READING, AWAITING_QUESTION, AWAITING_READING_TYPE, AWAITING_USER_ID, AWAITING_FEEDBACK, AWAITING_ADMIN_REPLY = range(8)
 
 # --- 📝 ТЕКСТОВЫЕ СООБЩЕНИЯ ---
 TEXTS = {
@@ -1512,6 +1511,7 @@ async def handle_quick_reply_button(update: Update, context: ContextTypes.DEFAUL
     # Создаем клавиатуру с кнопкой отмены
     cancel_keyboard = ReplyKeyboardMarkup([['❌ Отменить ответ']], resize_keyboard=True)
     
+    # 🔥 ВАЖНО: Используем query.message.reply_text вместо query.edit_message_text
     await query.message.reply_text(
         f"💌 *РЕЖИМ ОТВЕТА АДМИНА*\n\n"
         f"👤 *Пользователь:* {target_user_name}\n"
