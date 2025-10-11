@@ -1360,7 +1360,6 @@ async def handle_messages_history(update: Update, context: ContextTypes.DEFAULT_
         text += f"*... и ещё {len(all_messages) - 5} сообщений*"
     
     keyboard = [
-        [InlineKeyboardButton("🆕 Только новые", callback_data="show_new_messages")],
         [InlineKeyboardButton("📋 Вся история", callback_data="show_full_history")]
     ]
     
@@ -1660,12 +1659,10 @@ async def handle_show_full_history(update: Update, context: ContextTypes.DEFAULT
     
     # Основные кнопки навигации
     keyboard.append([
-        InlineKeyboardButton("🆕 Только новые", callback_data="show_new_messages"),
         InlineKeyboardButton("🔄 Обновить", callback_data="show_full_history")
     ])
     keyboard.append([
         InlineKeyboardButton("📋 Непрочитанные", callback_data="show_all_messages"),
-        InlineKeyboardButton("🏠 В меню", callback_data="admin_back_to_menu")
     ])
     
     try:
@@ -1782,6 +1779,14 @@ def main():
         filters.User(ADMIN_USER_IDS) & 
         filters.Regex('^🏠 Главное меню$'),
         handle_admin_back_to_menu_cmd
+    ))
+
+    # Обработчик ответа
+    application.add_handler(MessageHandler(
+        filters.TEXT & 
+        filters.User(ADMIN_USER_IDS) & 
+        ~filters.COMMAND,
+        handle_admin_reply_direct
     ))
     
     # 8. Обработчики админских callback-кнопок (сообщения)
