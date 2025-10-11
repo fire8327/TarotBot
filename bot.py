@@ -1120,6 +1120,8 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
     """Обработка ввода ответа от админа"""
     user_id = update.effective_user.id
     
+    logger.info(f"🔧 Обработка ответа админа. User: {user_id}, Text: {update.message.text}")
+    
     # Проверяем нажатие кнопки отмены
     if update.message.text == '❌ Отменить ответ':
         await update.message.reply_text(
@@ -1130,7 +1132,15 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
         return MAIN_MENU
     
     # Проверяем, что это админ и он в режиме ответа
-    if user_id not in ADMIN_USER_IDS or not context.user_data.get('admin_reply_mode'):
+    if user_id not in ADMIN_USER_IDS:
+        await update.message.reply_text(
+            "🌑 Я не понял твой знак... Выбери путь из меню.",
+            reply_markup=main_menu_keyboard()
+        )
+        return MAIN_MENU
+        
+    if not context.user_data.get('admin_reply_mode'):
+        logger.warning(f"⚠️ Админ {user_id} не в режиме ответа, но пытается отправить сообщение")
         await update.message.reply_text(
             "🌑 Я не понял твой знак... Выбери путь из меню.",
             reply_markup=main_menu_keyboard()
@@ -1142,6 +1152,8 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
     target_user_id = context.user_data.get('reply_to_user')
     original_message_text = context.user_data.get('original_message_text', 'Неизвестное сообщение')
     original_message_id = context.user_data.get('original_message_id')
+    
+    logger.info(f"🔧 Отправка ответа пользователю {target_user_id}")
     
     if not target_user_id:
         await update.message.reply_text(
@@ -1183,11 +1195,13 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text(
             "✅ *Ответ успешно отправлен пользователю!*",
             parse_mode='Markdown',
-            reply_markup=admin_keyboard()  # 🔥 Возвращаем админ-клавиатуру
+            reply_markup=admin_keyboard()  # Возвращаем админ-клавиатуру
         )
         
+        logger.info(f"✅ Ответ админа {user_id} отправлен пользователю {target_user_id}")
+        
     except Exception as e:
-        logger.error(f"Ошибка отправки ответа пользователю {target_user_id}: {e}")
+        logger.error(f"❌ Ошибка отправки ответа пользователю {target_user_id}: {e}")
         await update.message.reply_text(
             f"❌ Ошибка отправки: {str(e)}",
             reply_markup=main_menu_keyboard()
@@ -1196,6 +1210,7 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
     # Сбрасываем данные
     context.user_data.clear()
     return MAIN_MENU
+
 
 # 🔥 ДОБАВИМ вспомогательную функцию для показа обновленного списка
 async def handle_show_all_messages_custom(update: Update, context: ContextTypes.DEFAULT_TYPE, messages=None):
