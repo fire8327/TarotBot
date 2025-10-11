@@ -207,7 +207,7 @@ def get_all_users():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT user_id FROM users")
-    users = [{'user_id': row[0]} for row in cursor.fetchall()]
+    users = [{'user_id': row['user_id']} for row in cursor.fetchall()]
     conn.close()
     return users
 
