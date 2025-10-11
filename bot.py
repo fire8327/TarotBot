@@ -1115,14 +1115,11 @@ async def notify_admin_about_new_message(context: ContextTypes.DEFAULT_TYPE, use
         except Exception as e:
             logger.error(f"❌ Не удалось уведомить админа {admin_id}: {str(e)}")
 
-
 async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ввода ответа от админа"""
     user_id = update.effective_user.id
     
     logger.info(f"🔧 Обработка ответа админа. User: {user_id}, Text: {update.message.text}")
-    logger.info(f"🔧 Контекст данные: {context.user_data}")
-    logger.info(f"🔧 Текущее состояние: AWAITING_ADMIN_REPLY")
     
     # Проверяем нажатие кнопки отмены
     if update.message.text == '❌ Отменить ответ':
@@ -1194,11 +1191,37 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
         if original_message_id:
             update_message_status(original_message_id, 'replied', reply_text)
         
-        await update.message.reply_text(
-            "✅ *Ответ успешно отправлен пользователю!*",
-            parse_mode='Markdown',
-            reply_markup=admin_keyboard()
-        )
+        # 🔥 ОБНОВЛЕНИЕ: Показываем обновленный список сообщений
+        messages = get_unread_messages()
+        
+        if not messages:
+            await update.message.reply_text(
+                "✅ *Ответ успешно отправлен пользователю!*\n\n"
+                "📭 *Все сообщения отвечены!* 🎉",
+                parse_mode='Markdown',
+                reply_markup=admin_keyboard()
+            )
+        else:
+            # Создаем клавиатуру с оставшимися сообщениями
+            keyboard = []
+            for i, msg in enumerate(messages[:10]):
+                user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
+                button_text = f"💌 {user_name[:12]}..." if len(user_name) > 12 else f"💌 {user_name}"
+                
+                keyboard.append([InlineKeyboardButton(
+                    button_text, 
+                    callback_data=f"quick_reply_{msg['user_id']}_{msg['id']}"
+                )])
+            
+            keyboard.append([InlineKeyboardButton("🔄 Обновить список", callback_data="show_all_messages")])
+            keyboard.append([InlineKeyboardButton("📋 Вся история", callback_data="show_full_history")])
+            
+            await update.message.reply_text(
+                f"✅ *Ответ успешно отправлен пользователю!*\n\n"
+                f"📨 *Осталось непрочитанных сообщений: {len(messages)}*",
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
         
         logger.info(f"✅ Ответ админа {user_id} отправлен пользователю {target_user_id}")
         
@@ -1212,7 +1235,6 @@ async def handle_admin_reply_input(update: Update, context: ContextTypes.DEFAULT
     # Сбрасываем данные
     context.user_data.clear()
     return MAIN_MENU
-
 
 # 🔥 ДОБАВИМ вспомогательную функцию для показа обновленного списка
 async def handle_show_all_messages_custom(update: Update, context: ContextTypes.DEFAULT_TYPE, messages=None):
@@ -1260,15 +1282,15 @@ async def handle_show_all_messages_custom(update: Update, context: ContextTypes.
     else:
         await update.edit_message_text(text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
-# Добавьте команду для просмотра сообщений
 async def handle_messages_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать непрочитанные сообщения с удобными кнопками"""
+    """Показать непрочитанные сообщения с удобными кнопками (обновленная версия)"""
     user_id = update.effective_user.id
     
     if user_id not in ADMIN_USER_IDS:
         await update.message.reply_text("❌ Доступ запрещён")
         return
     
+    # 🔥 ВСЕГДА получаем свежие данные
     messages = get_unread_messages()
     
     if not messages:
@@ -1296,7 +1318,7 @@ async def handle_messages_list(update: Update, context: ContextTypes.DEFAULT_TYP
     
     text = f"📨 *Непрочитанные сообщения: {len(messages)}*\n\n"
     text += "*Нажми на кнопку ниже для быстрого ответа:*\n"
-    text += "💡 *Сообщения удаляются из списка после ответа*\n\n"
+    text += "💡 *Сообщения автоматически удаляются из списка после ответа*\n\n"
     
     for i, msg in enumerate(messages[:5]):
         user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
@@ -1542,7 +1564,7 @@ async def handle_admin_reply_direct(update: Update, context: ContextTypes.DEFAUL
         return
 
 async def handle_show_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать все сообщения с пагинацией"""
+    """Показать все сообщения с пагинацией (обновленная версия)"""
     query = update.callback_query
     await query.answer()
     
@@ -1550,23 +1572,36 @@ async def handle_show_all_messages(update: Update, context: ContextTypes.DEFAULT
     if user_id not in ADMIN_USER_IDS:
         return
     
+    # 🔥 ВСЕГДА получаем свежие данные
     messages = get_unread_messages()
     
     if not messages:
-        await query.message.reply_text(
-            "📭 *Нет новых сообщений*\n\n"
-            "Все сообщения отвечены! 🎉",
-            parse_mode='Markdown'
-        )
+        try:
+            await query.edit_message_text(
+                "📭 *Нет новых сообщений*\n\n"
+                "Все сообщения отвечены! 🎉\n\n"
+                "💡 Используйте кнопки ниже для навигации:",
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📋 Вся история", callback_data="show_full_history")],
+                    [InlineKeyboardButton("🔄 Проверить снова", callback_data="show_all_messages")]
+                ])
+            )
+        except Exception:
+            # Если не удалось отредактировать, отправляем новое сообщение
+            await query.message.reply_text(
+                "📭 *Нет новых сообщений*\n\nВсе сообщения отвечены! 🎉",
+                parse_mode='Markdown'
+            )
         return
     
     # Показываем первые 5 сообщений с кнопками для ответа
-    text = "📨 *Новые сообщения:*\n\n"
+    text = f"📨 *Новые сообщения: {len(messages)}*\n\n"
     text += "💡 *Сообщения автоматически удаляются из этого списка после ответа*\n\n"
     
     for i, msg in enumerate(messages[:5]):
         user_name = msg['full_user_name'] or msg['user_name'] or "Без имени"
-        text += f"*{i+1}. {user_name}* (ID: {msg['user_id']})\n"
+        text += f"*{i+1}. {user_name}* (ID: `{msg['user_id']}`)\n"
         text += f"💬 {msg['message_text'][:150]}...\n"
         text += f"⏰ {msg['created_at'].strftime('%d.%m %H:%M')}\n\n"
     
@@ -1582,13 +1617,23 @@ async def handle_show_all_messages(update: Update, context: ContextTypes.DEFAULT
     keyboard.append([InlineKeyboardButton("🔄 Обновить список", callback_data="show_all_messages")])
     keyboard.append([InlineKeyboardButton("📋 Вся история", callback_data="show_full_history")])
     
-    await query.message.reply_text(
-        text,
-        parse_mode='Markdown',
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        await query.edit_message_text(
+            text,
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при редактировании сообщения: {e}")
+        # Если не удалось отредактировать, отправляем новое сообщение
+        await query.message.reply_text(
+            text,
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
 async def handle_show_full_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать полную историю всех сообщений с пагинацией"""
+    """Показать полную историю всех сообщений с пагинацией (обновленная версия)"""
     query = update.callback_query
     await query.answer()
     
@@ -1596,9 +1641,8 @@ async def handle_show_full_history(update: Update, context: ContextTypes.DEFAULT
     if user_id not in ADMIN_USER_IDS:
         return
     
-    # 🔥 ИСПРАВЛЕНО: используем функцию из db.py вместо прямого SQL
+    # 🔥 ВСЕГДА получаем свежие данные
     try:
-        # Получаем все сообщения через функцию из db.py
         from db import get_db_connection
         conn = get_db_connection()
         with conn.cursor() as cur:
@@ -1617,11 +1661,17 @@ async def handle_show_full_history(update: Update, context: ContextTypes.DEFAULT
         return
     
     if not all_messages:
-        await query.edit_message_text(
-            "📭 *Нет сообщений в истории*\n\n"
-            "Здесь будут отображаться все сообщения от пользователей.",
-            parse_mode='Markdown'
-        )
+        try:
+            await query.edit_message_text(
+                "📭 *Нет сообщений в истории*\n\n"
+                "Здесь будут отображаться все сообщения от пользователей.",
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Проверить снова", callback_data="show_full_history")]
+                ])
+            )
+        except Exception:
+            await query.message.reply_text("📭 Нет сообщений в истории")
         return
     
     # Разделяем на отвеченные и новые
@@ -1678,10 +1728,8 @@ async def handle_show_full_history(update: Update, context: ContextTypes.DEFAULT
     
     # Основные кнопки навигации
     keyboard.append([
-        InlineKeyboardButton("🔄 Обновить", callback_data="show_full_history")
-    ])
-    keyboard.append([
-        InlineKeyboardButton("📋 Непрочитанные", callback_data="show_all_messages"),
+        InlineKeyboardButton("🔄 Обновить", callback_data="show_full_history"),
+        InlineKeyboardButton("📋 Непрочитанные", callback_data="show_all_messages")
     ])
     
     try:
